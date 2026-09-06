@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "448205141152",
+    "project_id": "wrozo-5b147",
+    "storage_bucket": "wrozo-5b147.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:448205141152:android:ef65a8aa23d0113fe3c5c5",
+        "android_client_info": {
+          "package_name": "com.example.wrozo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUO0faIvUoI-qbZedH8Wu1Lfh8CxvqlYc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
