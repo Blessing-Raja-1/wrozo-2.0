@@ -21,18 +21,28 @@ class PaymentRepository {
 
   PaymentRepository({required FirebaseFirestore firestore}) : _firestore = firestore;
 
+  // SEC-02: Direct client writes to the payments collection are permanently prohibited.
+  // Payment records must only be created by a trusted server-side process (e.g., a Cloud
+  // Function that receives and cryptographically verifies a payment gateway webhook).
+  // firestore.rules enforces this with `allow create: if false`.
+  // This method is retained as a placeholder so call sites compile; it MUST NOT be invoked.
   Future<void> initiatePayment(Payment payment) async {
-    final docRef = _firestore.collection('payments').doc();
-    final data = payment.toMap();
-    data['createdAt'] = FieldValue.serverTimestamp();
-    await docRef.set(data);
+    throw UnsupportedError(
+      'Payment initiation via the client is not permitted. '
+      'Payments must be processed through the server-side payment gateway integration. '
+      '(SEC-02)',
+    );
   }
 
+  // SEC-02: Marking a payment as completed from the client is permanently prohibited.
+  // Only a server-side webhook handler may transition payment status.
+  // firestore.rules enforces this with `allow update: if false`.
   Future<void> markPaymentCompleted(String paymentId) async {
-    await _firestore.collection('payments').doc(paymentId).update({
-      'status': 'COMPLETED',
-      'completedAt': FieldValue.serverTimestamp(),
-    });
+    throw UnsupportedError(
+      'Payment status cannot be updated from the client. '
+      'Status must be updated by the server-side payment gateway webhook. '
+      '(SEC-02)',
+    );
   }
 
   Stream<List<Payment>> watchWorkerPayments(String workerId) {

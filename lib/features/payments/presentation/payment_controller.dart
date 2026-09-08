@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../authentication/data/auth_repository.dart';
 import '../data/payment_repository.dart';
 import '../domain/payment.dart';
 
@@ -14,28 +13,20 @@ class PaymentController extends AutoDisposeNotifier<AsyncValue<void>> {
     return const AsyncData(null);
   }
 
+  // SEC-02: Client-initiated payment writes are permanently prohibited.
+  // This method is retained so call sites compile, but invoking it will always produce
+  // an error state. Payments must be processed via a server-side payment gateway.
   Future<void> payWorker({
     required String jobId,
     required String workerId,
     required int amount,
   }) async {
-    final user = ref.read(authStateProvider).value;
-    if (user == null) {
-      state = AsyncError(Exception("Not authenticated"), StackTrace.current);
-      return;
-    }
-
     state = const AsyncLoading();
     try {
-      final payment = Payment(
-        id: '',
-        jobId: jobId,
-        workerId: workerId,
-        contractorId: user.uid,
-        amount: amount,
+      // The repository method throws UnsupportedError immediately (SEC-02).
+      await ref.read(paymentRepositoryProvider).initiatePayment(
+        Payment(id: '', jobId: jobId, workerId: workerId, contractorId: '', amount: amount),
       );
-      
-      await ref.read(paymentRepositoryProvider).initiatePayment(payment).then((_) {});
       state = const AsyncData(null);
     } catch (e, st) {
       state = AsyncError(e, st);

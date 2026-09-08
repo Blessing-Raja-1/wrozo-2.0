@@ -1,55 +1,98 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(uid) {
       return isAuthenticated() && request.auth.uid == uid;
     }
 
+    // SEC-01: Helper used for checking incoming role values.
+    // Only 'WORKER' and 'CONTRACTOR' are permitted. 'ADMIN' can NEVER be self-assigned.
+    function isAllowedRole(role) {
+      return role in ['WORKER', 'CONTRACTOR'];
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.keys().hasOnly(['phone', 'status', 'createdAt']);
-      allow update: if isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'fcmTokens']);
+
+      // SEC-01 (create): role is never part of the initial user document.
+      // The account is created without a role; role assignment happens via a separate
+      // update operation (see update rule below).
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['phone', 'status', 'createdAt']);
+
+      // SEC-01 (update): role may be written ONCE if it is currently absent (null/missing).
+      // Once a role exists in the document, it cannot be changed by the client.
+      // Only 'WORKER' or 'CONTRACTOR' are accepted — 'ADMIN' is always rejected.
+      // fcmTokens may be updated freely for push notification registration.
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'fcmTokens'])
+        && (
+          // Branch A: fcmTokens-only update — role is not being touched at all.
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+          ||
+          // Branch B: initial role assignment — role must not currently exist AND new value must be allowed.
+          (
+            (!('role' in resource.data) || resource.data.role == null)
+            && isAllowedRole(request.resource.data.role)
+          )
+        );
     }
 
     match /worker_profiles/{userId} {
       allow read: if isAuthenticated(); // Public to other logged in users
-      allow create: if isOwner(userId);
-      // Prevent client updates to server-controlled fields
-      allow update: if isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['rating', 'reviewCount', 'jobsCompleted']);
+
+      // SEC-03: Enforce that all server-controlled metric fields are at their zero values on creation.
+      // A client cannot forge rating, reviewCount, or jobsCompleted.
+      allow create: if isOwner(userId)
+        && request.resource.data.rating == 0
+        && request.resource.data.reviewCount == 0
+        && request.resource.data.jobsCompleted == 0;
+
+      // Prevent client updates to server-controlled fields (unchanged)
+      allow update: if isOwner(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['rating', 'reviewCount', 'jobsCompleted']);
     }
 
     match /contractor_profiles/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isOwner(userId);
-      // Prevent client updates to server-controlled fields
-      allow update: if isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['rating', 'reviewCount', 'isVerified']);
+
+      // SEC-03: Enforce that all server-controlled metric fields are at their zero/false values on creation.
+      // A client cannot forge rating, reviewCount, or isVerified status.
+      allow create: if isOwner(userId)
+        && request.resource.data.rating == 0
+        && request.resource.data.reviewCount == 0
+        && request.resource.data.isVerified == false;
+
+      // Prevent client updates to server-controlled fields (unchanged)
+      allow update: if isOwner(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['rating', 'reviewCount', 'isVerified']);
     }
-    
+
     match /jobs/{jobId} {
       allow read: if isAuthenticated() && (resource.data.status == 'OPEN' || resource.data.contractorId == request.auth.uid);
-      allow create: if isAuthenticated() 
+      allow create: if isAuthenticated()
         && request.resource.data.contractorId == request.auth.uid
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CONTRACTOR'
         && request.resource.data.status == 'OPEN';
-      allow update: if isAuthenticated() 
+      allow update: if isAuthenticated()
         && resource.data.contractorId == request.auth.uid
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['contractorId', 'createdAt']);
     }
-    
+
     match /applications/{appId} {
       allow read: if isAuthenticated() && (resource.data.workerId == request.auth.uid || resource.data.contractorId == request.auth.uid);
-      allow create: if isAuthenticated() 
+      allow create: if isAuthenticated()
         && request.resource.data.workerId == request.auth.uid
         && request.resource.data.status == 'PENDING'
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'WORKER';
-      allow update: if isAuthenticated() 
+      allow update: if isAuthenticated()
         && (
-             (resource.data.contractorId == request.auth.uid && request.resource.data.status in ['ACCEPTED', 'REJECTED']) || 
+             (resource.data.contractorId == request.auth.uid && request.resource.data.status in ['ACCEPTED', 'REJECTED']) ||
              (resource.data.workerId == request.auth.uid && request.resource.data.status == 'WITHDRAWN')
            )
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['workerId', 'contractorId', 'jobId', 'createdAt']);
@@ -57,16 +100,16 @@ service cloud.firestore {
 
     match /conversations/{conversationId} {
       allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow create: if isAuthenticated() 
+      allow create: if isAuthenticated()
         && request.auth.uid in request.resource.data.participants
         && request.resource.data.participants.size() == 2;
-      allow update: if isAuthenticated() 
+      allow update: if isAuthenticated()
         && request.auth.uid in resource.data.participants
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['participants']);
-        
+
       match /messages/{messageId} {
         allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-        allow create: if isAuthenticated() 
+        allow create: if isAuthenticated()
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
           && request.resource.data.senderId == request.auth.uid;
         allow update: if false; // Messages are immutable
@@ -74,23 +117,27 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
-      allow read: if isAuthenticated() && (resource.data.workerId == request.auth.uid || resource.data.contractorId == request.auth.uid);
-      allow create: if isAuthenticated() 
-        && request.resource.data.contractorId == request.auth.uid
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CONTRACTOR';
-      allow update: if isAuthenticated() 
-        && resource.data.contractorId == request.auth.uid
-        && request.resource.data.status == 'COMPLETED'
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['workerId', 'contractorId', 'jobId', 'amount', 'createdAt']);
+      // SEC-02: Only the payment participants (worker and contractor) may read their own payment records.
+      allow read: if isAuthenticated()
+        && (resource.data.workerId == request.auth.uid || resource.data.contractorId == request.auth.uid);
+
+      // SEC-02: NO client write is ever permitted on payment documents.
+      // Payment records must only be created or modified by a trusted server-side process
+      // (e.g., a Cloud Function receiving and cryptographically verifying a payment gateway webhook).
+      // This prevents clients from fabricating PENDING, COMPLETED, FAILED, or REFUNDED states.
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     match /reviews/{reviewId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() 
+      allow create: if isAuthenticated()
         && request.resource.data.reviewerId == request.auth.uid;
       allow update: if false; // Reviews are immutable
     }
 
+    // Deny all unmatched paths
     match /{document=**} {
       allow read, write: if false;
     }

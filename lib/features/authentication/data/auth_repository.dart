@@ -88,15 +88,27 @@ class AuthRepository {
     }
   }
 
+  // SEC-01: Permitted role values. Changing this list does NOT override Firestore rules.
+  // The authoritative allowlist enforcement is in firestore.rules (isAllowedRole function).
+  static const _allowedRoles = {'WORKER', 'CONTRACTOR'};
+
   Future<void> setRole(String role) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("Not authenticated");
-    
+
+    // Defence-in-depth: reject disallowed roles before touching Firestore.
+    // ADMIN and any other privileged value are explicitly blocked here and enforced
+    // again by firestore.rules on the server side.
+    if (!_allowedRoles.contains(role)) {
+      throw Exception('Invalid role: only WORKER or CONTRACTOR are permitted.');
+    }
+
     await _firestore.collection('users').doc(user.uid).update({
       'role': role,
     });
-    
-    // Create respective profile doc
+
+    // Create respective profile doc with server-controlled fields at zero values.
+    // firestore.rules enforces these starting values on create (SEC-03).
     if (role == 'WORKER') {
       await _firestore.collection('worker_profiles').doc(user.uid).set({
         'rating': 0,
