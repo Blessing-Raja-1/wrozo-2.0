@@ -50,3 +50,32 @@ node_modules/
 firebase-debug.log*
 firestore-debug.log*
 ui-debug.log*
+
+# Environment and Secret Configuration Files
+.env
+.env.*
+*.env
+
+# Android Signing & Keystore Files
+key.properties
+**/key.properties
+*.keystore
+*.jks
+
+# Cryptographic Keys and Certificates
+*.pem
+*.p12
+*.pfx
+*.key
+*.crt
+
+# Service Accounts & Credential Dumps
+*service-account*.json
+*serviceAccount*.json
+*credentials*.json
+client_secret*.json
+
+# Local and Editor Backup Files
+*.bak
+*.backup
+*~
