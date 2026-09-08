@@ -89,6 +89,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && request.resource.data.workerId == request.auth.uid
         && request.resource.data.status == 'PENDING'
+        && appId == request.resource.data.jobId + '_' + request.resource.data.workerId
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'WORKER';
       allow update: if isAuthenticated()
         && (
@@ -96,6 +97,7 @@ service cloud.firestore {
              (resource.data.workerId == request.auth.uid && request.resource.data.status == 'WITHDRAWN')
            )
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['workerId', 'contractorId', 'jobId', 'createdAt']);
+      allow delete: if false;
     }
 
     match /conversations/{conversationId} {
@@ -133,8 +135,14 @@ service cloud.firestore {
     match /reviews/{reviewId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated()
-        && request.resource.data.reviewerId == request.auth.uid;
+        && request.resource.data.reviewerId == request.auth.uid
+        && request.resource.data.revieweeId != request.auth.uid
+        && reviewId == request.resource.data.jobId + '_' + request.resource.data.reviewerId
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5;
       allow update: if false; // Reviews are immutable
+      allow delete: if false; // Reviews cannot be deleted by clients
     }
 
     // Deny all unmatched paths
