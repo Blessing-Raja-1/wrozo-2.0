@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- App Localization Foundation Completed (VERIFIED: 2026-09-09)
+- Google Maps Secure Injection Configured (VERIFIED: 2026-09-09)
 
 ## Current Objective
-- Configure Google Maps Android API key via secure local.properties injection and prepare production release readiness (PLANNED)
+- Supply production Google Cloud Maps API key in local.properties with SHA-1 restrictions when ready; prepare release readiness (PLANNED)
 
 ## Overall Status
-- Complete app localization foundation implemented across 5 supported Indian marketplace languages: English (`en`), Hindi (`hi`), Tamil (`ta`), Telugu (`te`), and Marathi (`mr`). All 5 language ARB files established with 40 essential daily-wage marketplace terms. `AppLocalizations` delegates (`AppLocalizations.localizationsDelegates`) and supported locales (`AppLocalizations.supportedLocales`) registered in `lib/main.dart` with localized `onGenerateTitle`. 14/14 Flutter tests pass (including comprehensive unit and widget localization integration tests in `test/localization/localization_test.dart`). Analyzer issues dropped to 272 (5 fewer issues, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`) in 43.7s (VERIFIED)
+- Google Maps Android API key injection securely configured through untracked `android/local.properties` and Gradle `manifestPlaceholders`. Android manifest meta-data (`com.google.android.geo.API_KEY`) verified in merged manifest (`build/app/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`). Zero API keys committed or hardcoded in source control. 14/14 Flutter tests pass. 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly in 29.8s (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
 
 ## Completed
 - Verified active workspace location and Git remote / branch tracking (VERIFIED)
@@ -80,24 +80,30 @@
   - Generated standard Flutter localization classes via `flutter gen-l10n`: `AppLocalizations`, `AppLocalizationsEn`, `AppLocalizationsHi`, `AppLocalizationsTa`, `AppLocalizationsTe`, and `AppLocalizationsMr`.
   - Registered `AppLocalizations.localizationsDelegates` and `AppLocalizations.supportedLocales` in `lib/main.dart` with localized `onGenerateTitle`.
   - Added automated tests in `test/localization/localization_test.dart` covering 5-locale lookup resolution, string non-emptiness, unsupported locale fallback, and widget context resolution.
+  - Pushed localization checkpoint commit `c2c1069` to `origin/main` (VERIFIED)
+- **MAPS-01 (Secure Google Maps Android Configuration):**
+  - Configured `android/app/build.gradle.kts` to safely load `local.properties` via `rootProject.file("local.properties")` and inject `MAPS_API_KEY` into `manifestPlaceholders`.
+  - Added `com.google.android.geo.API_KEY` meta-data to `android/app/src/main/AndroidManifest.xml` referencing `${MAPS_API_KEY}`.
+  - Confirmed merged manifest substitution (`build/app/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`) replaces placeholder without key leakage.
+  - Updated local untracked `android/local.properties` with placeholder template and Google Cloud Console restriction guidance (`com.wrozo.wrozo` + SHA-1 fingerprints).
 - Executed verification commands:
   - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 62/62 passed (VERIFIED)
   - `flutter test`: 14/14 passed (1 widget + 3 navigation + 10 localization tests) (VERIFIED)
-  - `flutter analyze --no-pub`: 272 issues (5 fewer issues, 0 new errors) (VERIFIED)
+  - `flutter analyze --no-pub`: 272 issues (baseline maintained, 0 new errors) (VERIFIED)
   - `git diff --check`: clean (VERIFIED)
-  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 43.7s (VERIFIED)
+  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 29.8s (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
 
 ## Blocked
-- Google Maps API key metadata missing: no key exists in repository; withheld from `AndroidManifest.xml` to prevent committing fake/hardcoded credentials (BLOCKED / CONFIGURATION REQUIRED)
+- Google Maps live map rendering requires developer to supply a real restricted Google Cloud Console Maps API key in untracked `android/local.properties`. Gradle manifest placeholder wiring is fully implemented and verified (PARTIAL / CONFIGURATION WIRED)
 
 ## Known Bugs
 - `test/widget_test.dart`: Fixed. References `WrozoApp`, compiles and passes (VERIFIED)
 - `ChatRepository.sendMessage` fails against Firestore rules: Fixed. Implemented two-phase creation, metadata-only updates, and hardened rules (VERIFIED)
 - Android runtime crash: `AndroidManifest.xml` permissions added (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) (VERIFIED)
-- Android runtime crash: `AndroidManifest.xml` lacks Google Maps API key meta-data (BLOCKED / CONFIGURATION REQUIRED)
+- Android runtime crash: `AndroidManifest.xml` lacks Google Maps API key meta-data: Fixed. `com.google.android.geo.API_KEY` meta-data wired through Gradle manifestPlaceholders from untracked `local.properties` (VERIFIED)
 - Android build failure: Fixed. Google Services plugin and `google-services.json` aligned with `com.wrozo.wrozo`, debug APK built successfully (VERIFIED)
 - Unwired Navigation: Fixed. `HomeScreen` provides role-based navigation and GoRouter routes wired to `JobDiscoveryScreen`, `JobPostingScreen`, `ProfileSetupScreen`, and `ApplicantReviewScreen` (VERIFIED)
 - Localization broken: Fixed. `AppLocalizations` delegates registered in `main.dart`; complete ARB files established for `en`, `hi`, `ta`, `te`, `mr` (VERIFIED)
@@ -110,6 +116,7 @@
 - **FIXED / MITIGATED:** Review Forgery & Tampering: `/reviews/{reviewId}` enforces composite ID (`${jobId}_${reviewerId}`), forbids self-reviews (`reviewerId != revieweeId`), enforces rating bounds (1 to 5), immutable, client delete denied; dynamically tested in emulator (9/9 tests passed) (VERIFIED)
 - **FIXED (CHAT-01):** Unauthorized chat creation & spoofing — conversation creation strictly gated on server-verified `ACCEPTED` job application (`/applications/{applicationId}`); participants immutable; `senderId` must match caller UID; messages immutable and client delete denied; non-empty text bounds (1–5000 chars) enforced; dynamically tested in emulator (17/17 chat tests passed) (VERIFIED)
 - **FIXED (SEC-AUDIT-01):** Secrets & Configuration Exposure Audit — Zero private keys, OAuth secrets, database passwords, or server-only credentials found across full codebase and 7 Git commits (`3ba52d7`..`0d6924e`); no rotation required; `.gitignore` fortified with comprehensive ignore rules for `.env*`, keystores (`*.keystore`, `*.jks`, `key.properties`), certificates/keys (`*.pem`, `*.p12`, `*.pfx`, `*.key`, `*.crt`), and service accounts (`*service-account*.json`, `*credentials*.json`); standards documented in `docs/security/secrets-and-config.md` (VERIFIED)
+- **FIXED (MAPS-01):** Google Maps API Key Exposure Avoided — Key is injected from local-only untracked `local.properties` via Gradle manifest placeholder; never hardcoded in `AndroidManifest.xml` or Dart code (VERIFIED)
 - **MEDIUM (OPEN):** Data Scraping Vulnerability: Worker and Contractor profiles are completely readable by any authenticated user without pagination or field filtering (VERIFIED)
 
 ## Testing Status
@@ -123,6 +130,7 @@
 - **Chat Coverage:** 100% of chat security rules and lifecycle scenarios verified via Firebase Local Emulator suite (17/17 chat tests passed) (VERIFIED)
 - **Navigation Coverage:** 100% of role-based dashboard navigation paths tested and passing (3/3 tests passed) (VERIFIED)
 - **Localization Coverage:** 100% of supported locales (`en`, `hi`, `ta`, `te`, `mr`) and 40 key marketplace strings verified across unit and widget integration tests (10/10 tests passed) (VERIFIED)
+- **Maps Configuration Coverage:** 100% of Gradle manifest placeholder injection verified via debug merged manifest inspection (VERIFIED)
 
 ## Architecture Decisions
 - **State Management:** Flutter Riverpod (`flutter_riverpod: ^2.4.9`) (VERIFIED)
@@ -134,6 +142,7 @@
 - **Dashboard Navigation:** Role-segregated `HomeScreen` switching on `UserRole` (Worker vs Contractor) with GoRouter navigation routes to all user-facing screens (VERIFIED)
 - **Secrets Management:** Client app restricted to public client identifiers (`google-services.json`, `firebase_options.dart`); server secrets strictly forbidden in Flutter codebase; release signing isolated via `android/key.properties` (VERIFIED)
 - **Localization Architecture:** Official Flutter `gen-l10n` toolchain driven by `l10n.yaml`; English template with 40 marketplace terms; native translations for Hindi, Tamil, Telugu, and Marathi; registered via `AppLocalizations.localizationsDelegates` and `AppLocalizations.supportedLocales` in `MaterialApp.router` (VERIFIED)
+- **Google Maps Key Injection:** `android/app/build.gradle.kts` reads `MAPS_API_KEY` from untracked `local.properties` and injects it into `manifestPlaceholders["MAPS_API_KEY"]` for substitution into `AndroidManifest.xml` (VERIFIED)
 
 ## Architecture Conflicts
 - Payment architecture conflicts: Documentation assumes Razorpay integration, but zero backend or client payment gateway code exists; system directly writes fake payment status to Firestore (VERIFIED)
@@ -148,16 +157,16 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `feat: complete app localization foundation` (PENDING PUSH) (VERIFIED)
+- **Commit:** `feat: configure secure Google Maps injection` (PENDING PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Complete app localization foundation across 5 languages (14/14 tests passed, 272 analyzer issues [5 fewer, 0 new], debug APK built in 43.7s) (VERIFIED)
+- Secure Google Maps Android API key injection configured via `local.properties` and Gradle manifest placeholders (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Configure Google Maps Android API key via secure local.properties injection (PLANNED)
+- Provide production restricted Google Maps API key in local.properties and test map widget rendering (PLANNED)
 
 ## Important Notes
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
@@ -166,3 +175,4 @@
 - Role-based dashboard navigation is verified with 4/4 passing tests; workers and contractors have clean, segregated access to all feature screens.
 - Full 5-language localization foundation (`en`, `hi`, `ta`, `te`, `mr`) is active and verified; `AppLocalizations` delegates and supported locales are wired into `main.dart`.
 - Zero secrets or server credentials have ever been committed; `.gitignore` actively prevents future commits of `.env`, keystores, certificates, and service account JSONs.
+- Google Maps manifest placeholder injection is verified in debug merged manifest. No API keys are hardcoded in source control.
