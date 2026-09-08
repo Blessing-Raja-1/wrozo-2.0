@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- P0 Security Fixes (SEC-01, SEC-02, SEC-03) Applied to `firestore.rules` and client repositories (VERIFIED: 2026-09-08)
+- P0 Build Foundation (Android & Test Setup) Completed (VERIFIED: 2026-09-08)
 
 ## Current Objective
-- P0 security rules deployed; next step is to fix remaining P0 build/compilation blockers (Android Gradle, widget_test.dart) (PLANNED)
+- Resolve Android package configuration blocker (`google-services.json` mismatch) and Google Maps API key configuration; fix pre-existing UI and localization issues (PLANNED)
 
 ## Overall Status
-- P0 security fixes (SEC-01 role escalation, SEC-02 payment writes, SEC-03 profile metrics) are applied and verified via `flutter analyze`. Pre-existing P0 build blockers (Android Gradle, widget_test.dart, localization) remain open (VERIFIED)
+- P0 Security fixes and P0 Build Foundation completed. Widget test (`test/widget_test.dart`) compiles and passes (1/1). Google Services Gradle plugin configured in `settings.gradle.kts` and `app/build.gradle.kts`. Android network and location permissions configured in `AndroidManifest.xml`. Analyzer error count reduced to 38 (0 errors in modified files). Android debug APK build is blocked by `google-services.json` package name mismatch (PARTIAL / BLOCKED)
 
 ## Completed
 - Verified active workspace location and Git remote / branch tracking (VERIFIED)
@@ -29,20 +29,29 @@
 - **SEC-03:** Worker profile create rule now requires `rating == 0`, `reviewCount == 0`, `jobsCompleted == 0` (VERIFIED)
 - **SEC-03:** Contractor profile create rule now requires `rating == 0`, `reviewCount == 0`, `isVerified == false` (VERIFIED)
 - Security attack scenarios documented in `test/security/security_rules_scenarios.dart` (VERIFIED)
-- `flutter analyze` run post-changes: zero errors in modified files; 39 pre-existing errors in unrelated files remain (VERIFIED)
+- Pushed security checkpoint commit `c14a85f` to `origin/main` (VERIFIED)
+- **BUILD-01 (Widget Test):** Replaced non-existent `MyApp` with `WrozoApp` wrapped in `ProviderScope` with `appUserProvider` override in `test/widget_test.dart`. Test compiles and passes (1/1) (VERIFIED)
+- **BUILD-02 (Google Services Plugin):** Added `com.google.gms.google-services:4.4.2` to `android/settings.gradle.kts` and applied in `android/app/build.gradle.kts` (VERIFIED)
+- **BUILD-03 (Android Permissions):** Added `INTERNET`, `ACCESS_FINE_LOCATION`, and `ACCESS_COARSE_LOCATION` to `android/app/src/main/AndroidManifest.xml` (VERIFIED)
+- Executed verification commands:
+  - `flutter analyze --no-pub`: 38 errors (down from 39; 0 errors introduced in modified files) (VERIFIED)
+  - `flutter test test/widget_test.dart`: 1/1 passed (VERIFIED)
+  - `flutter build apk --debug`: failed at `:app:processDebugGoogleServices` due to package name mismatch between `google-services.json` (`com.example.wrozo`) and `applicationId` (`com.wrozo.wrozo`) (BLOCKED)
 
 ## In Progress
 - None (VERIFIED)
 
 ## Blocked
-- Production release blocked by remaining P0 Blockers (see Production Blockers section below) (BLOCKED)
+- Android debug APK build blocked: `:app:processDebugGoogleServices` fails because `android/app/google-services.json` defines package `com.example.wrozo` while `android/app/build.gradle.kts` defines `applicationId = "com.wrozo.wrozo"`. Requires regenerating `google-services.json` for `com.wrozo.wrozo` or updating `applicationId` (BLOCKED / CONFIGURATION REQUIRED)
+- Google Maps API key metadata missing: no key exists in repository; withheld from `AndroidManifest.xml` to prevent committing fake/hardcoded credentials (BLOCKED / CONFIGURATION REQUIRED)
+- Production release blocked by remaining non-build blockers (chat batch conflict, unwired navigation, missing localization arb files) (BLOCKED)
 
 ## Known Bugs
-- `test/widget_test.dart` does not compile: references non-existent `MyApp` instead of `WrozoApp` (VERIFIED)
+- `test/widget_test.dart`: Fixed. References `WrozoApp`, compiles and passes (VERIFIED)
 - `ChatRepository.sendMessage` fails against Firestore rules: merges `participants` field which violates update rule (`affectedKeys().hasAny(['participants'])`), and first message fails `get()` check on non-existent conversation document (VERIFIED)
-- Android runtime crash: `AndroidManifest.xml` lacks `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, and `INTERNET` permissions (VERIFIED)
-- Android runtime crash: `AndroidManifest.xml` lacks Google Maps API key meta-data (VERIFIED)
-- Android build failure: `settings.gradle.kts` and `app/build.gradle.kts` lack `com.google.gms.google-services` plugin (VERIFIED)
+- Android runtime crash: `AndroidManifest.xml` permissions added (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) (VERIFIED)
+- Android runtime crash: `AndroidManifest.xml` lacks Google Maps API key meta-data (BLOCKED / CONFIGURATION REQUIRED)
+- Android build failure: `settings.gradle.kts` and `app/build.gradle.kts` Google Services plugin configured; now blocked by `google-services.json` package name mismatch (PARTIAL / BLOCKED)
 - Unwired Navigation: `HomeScreen` provides no navigation routes or UI links to `JobDiscoveryScreen`, `JobPostingScreen`, `ProfileSetupScreen`, `ApplicantReviewScreen`, or `PaymentScreen` (VERIFIED)
 - Localization broken: `AppLocalizations` is not registered in `localizationsDelegates` in `main.dart`; missing arb files for supported locales (`hi`, `ta`, `te`, `mr`) (VERIFIED)
 
@@ -56,9 +65,9 @@
 
 ## Testing Status
 - **Unit Coverage:** 0% (0 tests) (VERIFIED)
-- **Widget Coverage:** 0% (1 test broken, fails to compile) (VERIFIED)
+- **Widget Coverage:** 100% of defined widget tests passing (`test/widget_test.dart`: 1/1 passed) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
-- **Rules Coverage:** 0% (0 tests) (VERIFIED)
+- **Rules Coverage:** 0% (0 dynamic tests; 7 scenarios documented in `test/security/security_rules_scenarios.dart`) (PARTIAL)
 - **Backend Coverage:** 0% (0 tests) (VERIFIED)
 - **Authorization Coverage:** 0% (0 tests) (VERIFIED)
 - **Payment Coverage:** 0% (0 tests) (VERIFIED)
@@ -82,18 +91,18 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Tree:** Dirty — `firestore.rules`, `lib/features/authentication/data/auth_repository.dart`, `lib/features/payments/data/payment_repository.dart`, `lib/features/payments/presentation/payment_controller.dart`, `test/security/security_rules_scenarios.dart` modified/created (VERIFIED)
+- **Tree:** Modified — `android/settings.gradle.kts`, `android/app/build.gradle.kts`, `android/app/src/main/AndroidManifest.xml`, `test/widget_test.dart`, `docs/current-status.md` (VERIFIED)
 
 ## Last Completed Task
-- Apply P0 security fixes SEC-01 (role escalation), SEC-02 (payment writes), SEC-03 (profile metrics) to `firestore.rules`, `AuthRepository`, `PaymentRepository`, and `PaymentController` (VERIFIED)
+- P0 Build Foundation: widget test fix, Android Gradle Google Services plugin, and Android permissions (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Fix P0 Build & Compilation blockers: fix `test/widget_test.dart` (`MyApp` → `WrozoApp`), add Android Gradle plugins, add Android manifest permissions (PLANNED)
+- Resolve Android package configuration blocker (`google-services.json` vs `applicationId`) and address pre-existing UI navigation / localization blockers (PLANNED)
 
 ## Important Notes
-- Wrozo 2.0 cannot be deployed or launched on an Android device in its current state without the remaining P0 configuration fixes.
+- Wrozo 2.0 cannot be deployed or launched on an Android device in its current state until the `google-services.json` package name mismatch is aligned with `applicationId` (`com.wrozo.wrozo`).
 - Payment features are completely inoperative by design until a server-side Cloud Function + payment gateway webhook integration (Razorpay) is implemented. The client payment code now explicitly fails safe.
 - Firestore rules for SEC-01 role immutability have not been verified against the Firebase Local Emulator. Manual staging verification required before production deploy.
