@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class Conversation {
   final String id;
   final List<String> participants;
+  final String applicationId;
   final String lastMessage;
   final DateTime? lastMessageAt;
   final Map<String, int> unreadCount;
@@ -10,6 +11,7 @@ class Conversation {
   Conversation({
     required this.id,
     required this.participants,
+    this.applicationId = '',
     this.lastMessage = '',
     this.lastMessageAt,
     this.unreadCount = const {},
@@ -19,6 +21,7 @@ class Conversation {
     return Conversation(
       id: id,
       participants: List<String>.from(data['participants'] ?? []),
+      applicationId: data['applicationId'] as String? ?? '',
       lastMessage: data['lastMessage'] as String? ?? '',
       lastMessageAt: (data['lastMessageAt'] as Timestamp?)?.toDate(),
       unreadCount: Map<String, int>.from(data['unreadCount'] ?? {}),
@@ -28,6 +31,7 @@ class Conversation {
   Map<String, dynamic> toMap() {
     return {
       'participants': participants,
+      'applicationId': applicationId,
       'lastMessage': lastMessage,
       'lastMessageAt': lastMessageAt == null ? FieldValue.serverTimestamp() : Timestamp.fromDate(lastMessageAt!),
       'unreadCount': unreadCount,

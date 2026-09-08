@@ -580,3 +580,251 @@ describe('Group E: Review Security', () => {
     await assertSucceeds(db.collection('reviews').doc('job_101_contractor1').get());
   });
 });
+
+describe('Group F: Chat Security', () => {
+  const convId = 'contractor1_worker1'; // sorted: contractor1 < worker1
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const fs = context.firestore();
+
+      // Seed users
+      await fs.collection('users').doc('worker1').set({ role: 'WORKER', status: 'ACTIVE' });
+      await fs.collection('users').doc('contractor1').set({ role: 'CONTRACTOR', status: 'ACTIVE' });
+      await fs.collection('users').doc('stranger').set({ role: 'WORKER', status: 'ACTIVE' });
+
+      // Seed an ACCEPTED application between contractor1 and worker1
+      await fs.collection('applications').doc('job_101_worker1').set({
+        jobId: 'job_101',
+        workerId: 'worker1',
+        contractorId: 'contractor1',
+        status: 'ACCEPTED',
+        createdAt: new Date(),
+      });
+
+      // Seed a REJECTED application between contractor1 and stranger
+      await fs.collection('applications').doc('job_101_stranger').set({
+        jobId: 'job_101',
+        workerId: 'stranger',
+        contractorId: 'contractor1',
+        status: 'REJECTED',
+        createdAt: new Date(),
+      });
+
+      // Seed an active conversation between contractor1 and worker1
+      await fs.collection('conversations').doc(convId).set({
+        participants: ['contractor1', 'worker1'],
+        applicationId: 'job_101_worker1',
+        lastMessage: 'Welcome to the team',
+        lastMessageAt: new Date(),
+        unreadCount: { contractor1: 0, worker1: 0 },
+        createdAt: new Date(),
+      });
+
+      // Seed an existing message
+      await fs.collection('conversations').doc(convId).collection('messages').doc('msg_001').set({
+        senderId: 'contractor1',
+        text: 'Welcome to the team',
+        createdAt: new Date(),
+        isRead: false,
+      });
+    });
+  });
+
+  test('F1: participant can read own conversation', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertSucceeds(dbWorker.collection('conversations').doc(convId).get());
+
+    const dbContractor = testEnv.authenticatedContext('contractor1').firestore();
+    await assertSucceeds(dbContractor.collection('conversations').doc(convId).get());
+  });
+
+  test('F2: non-participant cannot read conversation', async () => {
+    const dbStranger = testEnv.authenticatedContext('stranger').firestore();
+    await assertFails(dbStranger.collection('conversations').doc(convId).get());
+
+    const dbAnon = testEnv.unauthenticatedContext().firestore();
+    await assertFails(dbAnon.collection('conversations').doc(convId).get());
+  });
+
+  test('F3: participant can read messages in conversation', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertSucceeds(dbWorker.collection('conversations').doc(convId).collection('messages').doc('msg_001').get());
+
+    const dbContractor = testEnv.authenticatedContext('contractor1').firestore();
+    await assertSucceeds(dbContractor.collection('conversations').doc(convId).collection('messages').doc('msg_001').get());
+  });
+
+  test('F4: non-participant cannot read messages in conversation', async () => {
+    const dbStranger = testEnv.authenticatedContext('stranger').firestore();
+    await assertFails(dbStranger.collection('conversations').doc(convId).collection('messages').doc('msg_001').get());
+
+    const dbAnon = testEnv.unauthenticatedContext().firestore();
+    await assertFails(dbAnon.collection('conversations').doc(convId).collection('messages').doc('msg_001').get());
+  });
+
+  test('F5: participant can send message as themselves', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertSucceeds(dbWorker.collection('conversations').doc(convId).collection('messages').doc('msg_002').set({
+      senderId: 'worker1',
+      text: 'Thank you! Excited to start.',
+      createdAt: new Date(),
+      isRead: false,
+    }));
+  });
+
+  test('F6: participant cannot spoof senderId as another UID', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertFails(dbWorker.collection('conversations').doc(convId).collection('messages').doc('msg_spoof').set({
+      senderId: 'contractor1', // spoofing peer
+      text: 'I am impersonating the contractor',
+      createdAt: new Date(),
+      isRead: false,
+    }));
+  });
+
+  test('F7: non-participant cannot send message in conversation', async () => {
+    const dbStranger = testEnv.authenticatedContext('stranger').firestore();
+    await assertFails(dbStranger.collection('conversations').doc(convId).collection('messages').doc('msg_intruder').set({
+      senderId: 'stranger',
+      text: 'Unauthorized message',
+      createdAt: new Date(),
+      isRead: false,
+    }));
+  });
+
+  test('F8: empty message text is denied', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertFails(dbWorker.collection('conversations').doc(convId).collection('messages').doc('msg_empty').set({
+      senderId: 'worker1',
+      text: '',
+      createdAt: new Date(),
+      isRead: false,
+    }));
+  });
+
+  test('F9: oversized message text (>5000 chars) is denied', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertFails(dbWorker.collection('conversations').doc(convId).collection('messages').doc('msg_huge').set({
+      senderId: 'worker1',
+      text: 'A'.repeat(5001),
+      createdAt: new Date(),
+      isRead: false,
+    }));
+  });
+
+  test('F10: existing message cannot be modified (immutable)', async () => {
+    const dbContractor = testEnv.authenticatedContext('contractor1').firestore();
+    await assertFails(dbContractor.collection('conversations').doc(convId).collection('messages').doc('msg_001').update({
+      text: 'Altered message content',
+    }));
+  });
+
+  test('F11: existing message cannot be deleted by client', async () => {
+    const dbContractor = testEnv.authenticatedContext('contractor1').firestore();
+    await assertFails(dbContractor.collection('conversations').doc(convId).collection('messages').doc('msg_001').delete());
+
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertFails(dbWorker.collection('conversations').doc(convId).collection('messages').doc('msg_001').delete());
+  });
+
+  test('F12: conversation participants cannot be modified by client', async () => {
+    const dbContractor = testEnv.authenticatedContext('contractor1').firestore();
+    await assertFails(dbContractor.collection('conversations').doc(convId).update({
+      participants: ['contractor1', 'stranger'],
+    }));
+  });
+
+  test('F13: conversation applicationId cannot be modified by client', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    await assertFails(dbWorker.collection('conversations').doc(convId).update({
+      applicationId: 'other_application_id',
+    }));
+  });
+
+  test('F14: conversation cannot be deleted by client', async () => {
+    const dbContractor = testEnv.authenticatedContext('contractor1').firestore();
+    await assertFails(dbContractor.collection('conversations').doc(convId).delete());
+  });
+
+  test('F15: arbitrary user cannot create conversation without accepted application', async () => {
+    const dbStranger = testEnv.authenticatedContext('stranger').firestore();
+    // stranger has only REJECTED application with contractor1
+    const invalidConvId = 'contractor1_stranger';
+    await assertFails(dbStranger.collection('conversations').doc(invalidConvId).set({
+      participants: ['contractor1', 'stranger'],
+      applicationId: 'job_101_stranger',
+      createdAt: new Date(),
+      lastMessage: 'Hello',
+      lastMessageAt: new Date(),
+      unreadCount: { contractor1: 1, stranger: 0 },
+    }));
+
+    // stranger has NO application with worker1
+    const noAppConvId = 'stranger_worker1';
+    await assertFails(dbStranger.collection('conversations').doc(noAppConvId).set({
+      participants: ['stranger', 'worker1'],
+      applicationId: 'non_existent_app',
+      createdAt: new Date(),
+      lastMessage: 'Hello',
+      lastMessageAt: new Date(),
+      unreadCount: { stranger: 0, worker1: 1 },
+    }));
+  });
+
+  test('F16: conversation creation with non-canonical ID is denied', async () => {
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    // Non-canonical ID: worker1_contractor1 instead of contractor1_worker1
+    await assertFails(dbWorker.collection('conversations').doc('worker1_contractor1').set({
+      participants: ['contractor1', 'worker1'],
+      applicationId: 'job_101_worker1',
+      createdAt: new Date(),
+      lastMessage: 'Hello',
+      lastMessageAt: new Date(),
+      unreadCount: { contractor1: 1, worker1: 0 },
+    }));
+  });
+
+  test('F17: legitimate worker and contractor with accepted application can create conversation and exchange messages', async () => {
+    // Clean state: delete seeded conversation
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().collection('conversations').doc(convId).delete();
+    });
+
+    const dbWorker = testEnv.authenticatedContext('worker1').firestore();
+    // Worker creates the conversation
+    await assertSucceeds(dbWorker.collection('conversations').doc(convId).set({
+      participants: ['contractor1', 'worker1'],
+      applicationId: 'job_101_worker1',
+      createdAt: new Date(),
+      lastMessage: 'Hi, I saw you accepted my application!',
+      lastMessageAt: new Date(),
+      unreadCount: { contractor1: 1, worker1: 0 },
+    }));
+
+    // Worker sends first message in messages subcollection
+    await assertSucceeds(dbWorker.collection('conversations').doc(convId).collection('messages').doc('msg_first').set({
+      senderId: 'worker1',
+      text: 'Hi, I saw you accepted my application!',
+      createdAt: new Date(),
+      isRead: false,
+    }));
+
+    // Contractor responds
+    const dbContractor = testEnv.authenticatedContext('contractor1').firestore();
+    await assertSucceeds(dbContractor.collection('conversations').doc(convId).collection('messages').doc('msg_reply').set({
+      senderId: 'contractor1',
+      text: 'Welcome aboard! When can you start?',
+      createdAt: new Date(),
+      isRead: false,
+    }));
+
+    // Contractor updates conversation metadata (without touching participants)
+    await assertSucceeds(dbContractor.collection('conversations').doc(convId).update({
+      lastMessage: 'Welcome aboard! When can you start?',
+      lastMessageAt: new Date(),
+      'unreadCount.worker1': 1,
+      'unreadCount.contractor1': 0,
+    }));
+  });
+});

@@ -7,8 +7,13 @@ import '../../../../core/theme/app_colors.dart';
 
 class ConversationScreen extends ConsumerStatefulWidget {
   final String peerId;
+  final String? applicationId;
 
-  const ConversationScreen({super.key, required this.peerId});
+  const ConversationScreen({
+    super.key,
+    required this.peerId,
+    this.applicationId,
+  });
 
   @override
   ConsumerState<ConversationScreen> createState() => _ConversationScreenState();
@@ -37,8 +42,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   void _send() {
-    if (_textController.text.trim().isNotEmpty) {
-      ref.read(chatControllerProvider.notifier).sendMessage(widget.peerId, _textController.text.trim());
+    final text = _textController.text.trim();
+    if (text.isNotEmpty) {
+      ref.read(chatControllerProvider.notifier).sendMessage(
+        widget.peerId,
+        text,
+        applicationId: widget.applicationId,
+      );
       _textController.clear();
     }
   }
@@ -48,12 +58,27 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final user = ref.watch(authStateProvider).value;
     if (user == null) return const Scaffold();
 
+    ref.listen<AsyncValue<void>>(chatControllerProvider, (previous, next) {
+      if (next is AsyncError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send message: ${next.error}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    });
+
+    final chatState = ref.watch(chatControllerProvider);
+    final isSending = chatState is AsyncLoading;
+
     _conversationId = ref.watch(chatRepositoryProvider).generateConversationId(user.uid, widget.peerId);
     final messagesAsync = ref.watch(conversationMessagesProvider(_conversationId));
+    final peerDisplayName = widget.peerId.length >= 5 ? widget.peerId.substring(0, 5) : widget.peerId;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Chat with ${widget.peerId.substring(0, 5)}'),
+        title: Text('Chat with $peerDisplayName'),
       ),
       body: SafeArea(
         child: Column(
@@ -61,6 +86,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
             Expanded(
               child: messagesAsync.when(
                 data: (messages) {
+                  if (messages.isEmpty) {
+                    return const Center(child: Text('No messages yet. Send a message to start chatting!'));
+                  }
+
                   return ListView.builder(
                     reverse: true, // Newest messages at bottom
                     padding: const EdgeInsets.all(16),
@@ -125,10 +154,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   const SizedBox(width: 8),
                   CircleAvatar(
                     backgroundColor: AppColors.primary,
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                      onPressed: _send,
-                    ),
+                    child: isSending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                            onPressed: _send,
+                          ),
                   )
                 ],
               ),

@@ -13,8 +13,9 @@ class ChatController extends AutoDisposeNotifier<AsyncValue<void>> {
     return const AsyncData(null);
   }
 
-  Future<void> sendMessage(String peerId, String text) async {
-    if (text.trim().isEmpty) return;
+  Future<void> sendMessage(String peerId, String text, {String? applicationId}) async {
+    final cleanText = text.trim();
+    if (cleanText.isEmpty) return;
     
     final user = ref.read(authStateProvider).value;
     if (user == null) {
@@ -22,12 +23,15 @@ class ChatController extends AutoDisposeNotifier<AsyncValue<void>> {
       return;
     }
 
+    state = const AsyncLoading();
     try {
       await ref.read(chatRepositoryProvider).sendMessage(
         currentUserId: user.uid,
         peerId: peerId,
-        text: text.trim(),
+        text: cleanText,
+        applicationId: applicationId,
       );
+      state = const AsyncData(null);
     } catch (e, st) {
       state = AsyncError(e, st);
     }

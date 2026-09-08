@@ -101,20 +101,55 @@ service cloud.firestore {
     }
 
     match /conversations/{conversationId} {
+      function isCanonicalConversationId(cId, p0, p1) {
+        return cId == (p0 < p1 ? p0 + '_' + p1 : p1 + '_' + p0);
+      }
+
       allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+
+      // Conversations can only be created between two distinct users who have an ACCEPTED application.
       allow create: if isAuthenticated()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.resource.data.participants[0] != request.resource.data.participants[1]
         && request.auth.uid in request.resource.data.participants
-        && request.resource.data.participants.size() == 2;
+        && isCanonicalConversationId(
+             conversationId,
+             request.resource.data.participants[0],
+             request.resource.data.participants[1]
+           )
+        && request.resource.data.applicationId is string
+        && exists(/databases/$(database)/documents/applications/$(request.resource.data.applicationId))
+        && get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.status == 'ACCEPTED'
+        && request.auth.uid in [
+             get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.workerId,
+             get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.contractorId
+           ]
+        && request.resource.data.participants.hasAll([
+             get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.workerId,
+             get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.contractorId
+           ]);
+
+      // Participants, applicationId, and createdAt cannot be changed by clients.
       allow update: if isAuthenticated()
         && request.auth.uid in resource.data.participants
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['participants']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['participants', 'applicationId', 'createdAt']);
+
+      allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow read: if isAuthenticated()
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+
         allow create: if isAuthenticated()
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
-          && request.resource.data.senderId == request.auth.uid;
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 5000;
+
         allow update: if false; // Messages are immutable
+        allow delete: if false; // Client deletion of messages is denied
       }
     }
 

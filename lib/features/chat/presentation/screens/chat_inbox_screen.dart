@@ -28,16 +28,18 @@ class ChatInboxScreen extends ConsumerWidget {
             itemBuilder: (context, index) {
               final conv = conversations[index];
               final peerId = conv.participants.firstWhere((id) => id != user.uid, orElse: () => 'Unknown');
+              final peerInitial = peerId.isNotEmpty ? peerId.substring(0, 1).toUpperCase() : '?';
+              final peerDisplay = peerId.length >= 5 ? peerId.substring(0, 5) : peerId;
               final unread = conv.unreadCount[user.uid] ?? 0;
               final hasUnread = unread > 0;
 
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: AppColors.primaryLight,
-                  child: Text(peerId.substring(0, 1).toUpperCase(), style: const TextStyle(color: Colors.white)),
+                  child: Text(peerInitial, style: const TextStyle(color: Colors.white)),
                 ),
                 title: Text(
-                  'User: ${peerId.substring(0, 5)}...',
+                  'User: $peerDisplay...',
                   style: TextStyle(fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal),
                 ),
                 subtitle: Text(
