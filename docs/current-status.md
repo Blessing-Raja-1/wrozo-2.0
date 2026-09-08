@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Backend Foundation Established (VERIFIED: 2026-09-09)
+- Authoritative Job Lifecycle & Application Workflow Implemented (VERIFIED: 2026-09-09)
 
 ## Current Objective
-- Implement authoritative Cloud Function triggers / endpoints (e.g. Razorpay payment order creation and webhook verification) when payment gateway credentials become available (PLANNED)
+- Implement payment order creation and webhook processing when Razorpay merchant credentials become available (PLANNED)
 
 ## Overall Status
-- Firebase Cloud Functions backend foundation established in TypeScript on Node.js 20 LTS. Authoritative server trust model, singleton Admin SDK initialization, runtime secret management bindings, structured logging with PII/secret redaction, safe error handling, and server-side authorization guards (`requireAuth`, `requireRole`, `requireAdmin`) implemented and verified. 22/22 backend unit tests pass. 62/62 Firestore emulator security rules tests pass. 14/14 Flutter tests pass. 272 analyzer issues (baseline maintained, 0 new errors). Zero secrets committed. Comprehensive architecture documented in `docs/architecture/backend.md` (VERIFIED)
+- Authoritative Job Lifecycle finite-state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED` / `CANCELLED`) and transactional application acceptance workflow implemented in Firebase Cloud Functions. Atomic capacity limits (`workerCountNeeded`), duplicate application prevention, role guards (`WORKER`, `CONTRACTOR`), and state transition validations fully verified. 42/42 backend unit tests pass. 62/62 Firestore security rules emulator tests pass. 14/14 Flutter tests pass. 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly in 33.4s (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
 
 ## Completed
 - Verified active workspace location and Git remote / branch tracking (VERIFIED)
@@ -97,16 +97,31 @@
   - Implemented reusable server-side authorization guards in `functions/src/auth/auth_helpers.ts` (`requireAuth`, `getUserRecord`, `requireRole`, `requireWorker`, `requireContractor`, `requireAdmin`, `assertNotAdminSelfAssignment`).
   - Established domain service boundaries: `users/user_service.ts`, `jobs/job_service.ts`, `applications/application_service.ts`, `chat/chat_service.ts`, and `payments/payment_service.ts` (Razorpay order creation and HMAC-SHA256 webhook verification blueprint).
   - Created `getBackendStatus` healthcheck callable function in `functions/src/index.ts`.
+  - Created `getBackendStatus` healthcheck callable function in `functions/src/index.ts`.
   - Authored comprehensive backend architecture specification in `docs/architecture/backend.md`.
-  - Fortified `.gitignore` with `/functions/lib/` and `/functions/.secret.local`.
+  - Fortified `.gitignore` with `/functions/lib/` and `/functions/.secret.local` (VERIFIED)
+- **LIFECYCLE-01 (Authoritative Job Lifecycle & Transactional Application Workflow):**
+  - Implemented Authoritative Job Finite-State Machine in `functions/src/jobs/job_service.ts`:
+    - `OPEN` -> `IN_PROGRESS`, `OPEN` -> `CANCELLED`
+    - `IN_PROGRESS` -> `COMPLETED`, `IN_PROGRESS` -> `CANCELLED`
+    - Terminal states (`COMPLETED`, `CANCELLED`); direct transition from `OPEN` to `COMPLETED` strictly forbidden.
+    - Precondition validation for `COMPLETED`: requires state `IN_PROGRESS` and verified accepted worker participation.
+    - Authoritative job creation (`createJob`) with input validation (title, description, skills, wage, worker count, location).
+  - Implemented Transactional Application Workflow in `functions/src/applications/application_service.ts`:
+    - Worker application submission (`applyForJob`) with role check, self-job application prevention, non-OPEN job rejection, and composite ID collision prevention.
+    - Transactional contractor acceptance (`acceptApplication`) with Firestore `runTransaction`: atomically checks capacity (`acceptedCount < workerCountNeeded`), updates status to `ACCEPTED`, and transitions job `OPEN` -> `IN_PROGRESS` on first accepted worker.
+    - Contractor rejection (`rejectApplication`) of PENDING applications.
+    - Worker withdrawal (`withdrawApplication`) of PENDING applications (rejection if already ACCEPTED).
+  - Exported callable Cloud Functions in `functions/src/index.ts`: `createJob`, `transitionJobStatus`, `applyForJob`, `acceptApplication`, `rejectApplication`, `withdrawApplication`.
+  - Added 20 new backend unit tests across `job_service.test.ts` and `application_service.test.ts` (42/42 total backend unit tests passing).
 - Executed verification commands:
-  - `npm --prefix functions test`: 22/22 unit tests passed (VERIFIED)
+  - `npm --prefix functions test`: 42/42 unit tests passed across 16 suites (VERIFIED)
   - `npm --prefix functions run build`: TypeScript compiled with 0 errors (VERIFIED)
   - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 62/62 passed (VERIFIED)
   - `flutter test`: 14/14 passed (1 widget + 3 navigation + 10 localization tests) (VERIFIED)
   - `flutter analyze --no-pub`: 272 issues (baseline maintained, 0 new errors) (VERIFIED)
   - `git diff --check`: clean (VERIFIED)
-  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 29.8s (VERIFIED)
+  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 33.4s (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
@@ -133,6 +148,7 @@
 - **FIXED (SEC-AUDIT-01):** Secrets & Configuration Exposure Audit — Zero private keys, OAuth secrets, database passwords, or server-only credentials found across full codebase and 7 Git commits (`3ba52d7`..`0d6924e`); no rotation required; `.gitignore` fortified with comprehensive ignore rules for `.env*`, keystores (`*.keystore`, `*.jks`, `key.properties`), certificates/keys (`*.pem`, `*.p12`, `*.pfx`, `*.key`, `*.crt`), and service accounts (`*service-account*.json`, `*credentials*.json`); standards documented in `docs/security/secrets-and-config.md` (VERIFIED)
 - **FIXED (MAPS-01):** Google Maps API Key Exposure Avoided — Key is injected from local-only untracked `local.properties` via Gradle manifest placeholder; never hardcoded in `AndroidManifest.xml` or Dart code (VERIFIED)
 - **FIXED (BACKEND-01):** Untrusted Client Vulnerability Neutralized — Firebase Cloud Functions foundation established in TypeScript on Node.js 20 LTS as the authoritative trusted server layer; zero client payment writes; Secret Manager bindings for future payment secrets; strict role guards (VERIFIED)
+- **FIXED (LIFECYCLE-01):** Client Lifecycle Tampering Eliminated — Job state machine transitions and application acceptance capacity constraints enforced server-side; race conditions eliminated via transactional acceptance (VERIFIED)
 - **MEDIUM (OPEN):** Data Scraping Vulnerability: Worker and Contractor profiles are completely readable by any authenticated user without pagination or field filtering (VERIFIED)
 
 ## Testing Status
@@ -140,7 +156,7 @@
 - **Widget Coverage:** 100% of defined widget and navigation tests passing (14/14 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10]) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
 - **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 62/62 tests passed across 6 test suites) (VERIFIED)
-- **Backend Coverage:** 100% of defined backend unit tests passing (22/22 tests passed across auth guards, error sanitization, and logger redaction) (VERIFIED)
+- **Backend Coverage:** 100% of defined backend unit tests passing (42/42 tests passed across auth guards, error sanitization, logger redaction, job state machine, and application workflows) (VERIFIED)
 - **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (62/62 passed) (VERIFIED)
 - **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed) (VERIFIED)
 - **Chat Coverage:** 100% of chat security rules and lifecycle scenarios verified via Firebase Local Emulator suite (17/17 chat tests passed) (VERIFIED)
@@ -153,6 +169,7 @@
 - **Routing:** GoRouter (`go_router: ^17.5.0`) (VERIFIED)
 - **Backend Services:** Firebase Core & Auth & Firestore (VERIFIED)
 - **Backend Architecture:** Firebase Cloud Functions (Node.js 20 LTS, TypeScript 5, 2nd Gen API) as the authoritative trusted server layer; zero client payment writes; Secret Manager for payment secrets; strict role guards (VERIFIED)
+- **Job Lifecycle Architecture:** Authoritative state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED`, `OPEN`/`IN_PROGRESS` -> `CANCELLED`); atomic transactional worker capacity enforcement; server-controlled `completedAt`/`cancelledAt` timestamps (VERIFIED)
 - **Location Services:** Geolocator + Geoflutterfire Plus (VERIFIED)
 - **Rules Unit Testing:** Firebase Local Emulator + `@firebase/rules-unit-testing` + Node.js test runner (`npm run test:rules`) (VERIFIED)
 - **Chat Architecture:** Canonical 1-to-1 conversation IDs (`minUID_maxUID`), application-gated conversation creation, immutable participants, separate initial creation and subsequent metadata updates (VERIFIED)
@@ -163,7 +180,7 @@
 
 ## Architecture Conflicts
 - Payment architecture conflicts: Documentation assumes Razorpay integration, but zero backend or client payment gateway code exists; system directly writes fake payment status to Firestore (VERIFIED)
-- Job lifecycle conflict: JobStatus enum defines 4 states, but repository and controllers only support `OPEN` creation; no state transition mechanics exist (VERIFIED)
+- Job lifecycle conflict: Fixed. Authoritative state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED` / `CANCELLED`) and transactional application acceptance workflow implemented in Cloud Functions with capacity checks (VERIFIED)
 - Chat transaction conflict: Fixed. Implemented two-phase initial conversation create, metadata-only subsequent updates, and hardened rules (VERIFIED)
 
 ## Dependencies
@@ -174,10 +191,10 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `feat: establish secure backend foundation` (PENDING PUSH) (VERIFIED)
+- **Commit:** `feat: implement authoritative job lifecycle` (PENDING PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Establish secure backend foundation using Firebase Cloud Functions (Node 20 LTS, TypeScript 5, Admin SDK, auth/authz guards, 22/22 backend tests passed, 62/62 emulator tests passed, 14/14 Flutter tests passed) (VERIFIED)
+- Implement authoritative server-side Job Lifecycle and Application workflow in Firebase Cloud Functions (state machine, transactional acceptance with capacity checks, 42/42 backend tests passed, 62/62 emulator tests passed, 14/14 Flutter tests passed, debug APK verified) (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
@@ -193,4 +210,4 @@
 - Full 5-language localization foundation (`en`, `hi`, `ta`, `te`, `mr`) is active and verified; `AppLocalizations` delegates and supported locales are wired into `main.dart`.
 - Zero secrets or server credentials have ever been committed; `.gitignore` actively prevents future commits of `.env`, keystores, certificates, and service account JSONs.
 - Google Maps manifest placeholder injection is verified in debug merged manifest. No API keys are hardcoded in source control.
-- Firebase Cloud Functions backend foundation is verified with 22/22 unit tests passing, zero hardcoded credentials, and comprehensive architecture documented in `docs/architecture/backend.md`.
+- Authoritative Job Lifecycle & Application Workflow is verified with 42/42 backend unit tests passing, transactional capacity enforcement, and zero secrets committed.

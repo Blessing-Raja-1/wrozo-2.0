@@ -46,6 +46,10 @@ export interface JobRecord {
   status: JobStatus;
   workerCountNeeded: number;
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
+  completedAt?: Timestamp;
+  cancelledAt?: Timestamp;
+  statusReason?: string;
   geohash?: string;
   location?: GeoPoint;
 }
@@ -57,6 +61,41 @@ export interface ApplicationRecord {
   status: ApplicationStatus;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  rejectionReason?: string;
+}
+
+export interface CreateJobInput {
+  title: string;
+  description: string;
+  skillsRequired: string[];
+  wage: number;
+  workerCountNeeded: number;
+  geohash?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface TransitionJobStatusInput {
+  jobId: string;
+  targetStatus: JobStatus;
+  reason?: string;
+}
+
+export interface ApplyForJobInput {
+  jobId: string;
+}
+
+export interface AcceptApplicationInput {
+  applicationId: string;
+}
+
+export interface RejectApplicationInput {
+  applicationId: string;
+  reason?: string;
+}
+
+export interface WithdrawApplicationInput {
+  applicationId: string;
 }
 
 export interface ConversationRecord {

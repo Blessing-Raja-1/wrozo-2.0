@@ -188,7 +188,93 @@ The backend layer serves as the **authoritative trust boundary** for the applica
 
 ---
 
-## 5. Future Payment & Webhook Architecture (Razorpay Blueprint)
+## 5. Authoritative Job Lifecycle & Application Workflow
+
+### Authoritative Job Finite-State Machine
+
+```
+              ┌───────────────┐
+              │     OPEN      │
+              └───┬───────┬───┘
+                  │       │
+       First      │       │ Contractor
+       Worker     │       │ Cancels
+       Accepted   │       │
+                  ▼       ▼
+┌──────────────┐     ┌──────────────┐
+│ IN_PROGRESS  │     │  CANCELLED   │ (Terminal)
+└───┬──────┬───┘     └──────────────┘
+    │      │
+All │      │ Contractor
+Work│      │ Cancels
+Done│      │
+    ▼      ▼
+┌──────────────┐     ┌──────────────┐
+│  COMPLETED   │     │  CANCELLED   │ (Terminal)
+└──────────────┘     └──────────────┘
+  (Terminal)
+```
+
+#### Valid Lifecycle Transitions:
+- `OPEN` $\rightarrow$ `IN_PROGRESS`: Automatically triggered upon transactional acceptance of the first worker, or via authoritative status update.
+- `OPEN` $\rightarrow$ `CANCELLED`: Contractor cancels the job post before work starts. Authoritative `cancelledAt` timestamp and reason recorded.
+- `IN_PROGRESS` $\rightarrow$ `COMPLETED`: Contractor marks job completed. **Requires verification that accepted worker participation exists.** Sets authoritative `completedAt` timestamp.
+- `IN_PROGRESS` $\rightarrow$ `CANCELLED`: Contractor cancels ongoing job due to unforeseen circumstances. Sets authoritative `cancelledAt` timestamp.
+- **Terminal States:** `COMPLETED` and `CANCELLED`. Once entered, no further transitions are permitted.
+- **Strictly Prohibited:** Direct transition from `OPEN` to `COMPLETED` without `IN_PROGRESS` and accepted workers; reverting `COMPLETED` or `CANCELLED` back to `OPEN`.
+
+---
+
+### Authoritative Application Workflow
+
+#### 1. Worker Application Submission (`applyForJob`)
+- Caller must be authenticated with `role == 'WORKER'`.
+- Job must exist and must be in `OPEN` status.
+- Worker cannot apply to their own job posting (`job.contractorId != worker.uid`).
+- Application document ID is deterministically formed as `${jobId}_${workerId}`.
+- If an application already exists for this pair, the request is rejected (`409 Conflict: You have already applied for this job`).
+- Initial application status is always `PENDING` with server timestamps (`createdAt`, `updatedAt`).
+
+#### 2. Transactional Application Acceptance (`acceptApplication`)
+Executed inside an atomic Firestore transaction (`db.runTransaction`):
+1. Verifies caller is authenticated with `role == 'CONTRACTOR'`.
+2. Reads application document: must exist and be in `PENDING` status.
+3. Verifies contractor owns the job (`job.contractorId == caller.uid`).
+4. Reads job document: must be in `OPEN` or `IN_PROGRESS` status.
+5. Counts existing accepted applications (`status == 'ACCEPTED'`).
+6. **Enforces Capacity Limit:** If `acceptedCount >= job.workerCountNeeded`, transaction aborts with `ConflictError` (`Job capacity reached: all worker positions have been filled`).
+7. Updates application document to `ACCEPTED` with authoritative timestamp.
+8. If the job was in `OPEN` status, atomically transitions job status to `IN_PROGRESS`.
+9. Concurrency race conditions (simultaneous acceptances exceeding worker quota) are eliminated by the transaction boundary.
+
+#### 3. Application Rejection (`rejectApplication`)
+- Caller must own the job.
+- Application must be in `PENDING` status.
+- Transitions status to `REJECTED` with optional rejection reason.
+
+#### 4. Worker Withdrawal (`withdrawApplication`)
+- Caller must be the applicant worker.
+- Application must be in `PENDING` status.
+- **Prohibited:** Cannot withdraw an application that has already been `ACCEPTED` (`ConflictError`).
+- Transitions status to `WITHDRAWN`.
+
+---
+
+### Callable Cloud Functions Catalog
+
+| Function Name | Allowed Role | Input Interface | Output | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `getBackendStatus` | Any / Anonymous | `{}` | Status & Region | Verifies backend connectivity and deployment environment |
+| `createJob` | `CONTRACTOR` | `CreateJobInput` | `{ jobId }` | Authoritatively validates parameters and creates an OPEN job |
+| `transitionJobStatus` | `CONTRACTOR` | `TransitionJobStatusInput` | `{ success }` | Enforces state machine transitions (COMPLETED, CANCELLED) |
+| `applyForJob` | `WORKER` | `ApplyForJobInput` | `{ applicationId }` | Verifies eligibility, composite ID, and creates PENDING application |
+| `acceptApplication` | `CONTRACTOR` | `AcceptApplicationInput` | `{ applicationId, jobStatus }` | Transactionally accepts worker and enforces capacity limits |
+| `rejectApplication` | `CONTRACTOR` | `RejectApplicationInput` | `{ success }` | Authoritatively rejects a PENDING application |
+| `withdrawApplication` | `WORKER` | `WithdrawApplicationInput` | `{ success }` | Allows worker to withdraw a PENDING application |
+
+---
+
+## 6. Future Payment & Webhook Architecture (Razorpay Blueprint)
 
 ```
 [Contractor App]             [Cloud Functions]               [Razorpay API]
@@ -228,7 +314,7 @@ The backend layer serves as the **authoritative trust boundary** for the applica
 
 ---
 
-## 6. Error Handling & Structured Logging
+## 7. Error Handling & Structured Logging
 
 ### Safe Error Handling Policy
 1. Internal errors and database stack traces are caught by `handleFunctionError`.
@@ -243,7 +329,7 @@ The backend layer serves as the **authoritative trust boundary** for the applica
 
 ---
 
-## 7. Secrets & Environment Configuration Policy
+## 8. Secrets & Environment Configuration Policy
 
 1. **Strict No-Secrets Rule:** No API keys, private keys, service account JSONs, or credentials are saved in Git.
 2. **Runtime Parameters:** Non-sensitive parameters (e.g. `DEPLOYMENT_ENV`, `APP_REGION`) are configured via `firebase-functions/params` `defineString()`.
@@ -256,19 +342,20 @@ The backend layer serves as the **authoritative trust boundary** for the applica
 
 ---
 
-## 8. Verification & Testing Strategy
+## 9. Verification & Testing Strategy
 
 - **Backend Unit Tests:** Run via `npm test` using Node.js built-in test runner (`node:test`, `node:assert`).
-  - Covers auth guards, role checks, admin self-assignment blocking, error mapping, and log sanitization.
+  - Covers auth guards, role checks, admin self-assignment blocking, error mapping, log sanitization, job finite-state machine, and application workflows (42/42 tests passing).
 - **Firestore Security Rules:** Verified against Firebase Local Emulator (`62/62 passing`).
 - **Flutter Client Integration:** Verified via `flutter test` (`14/14 passing`).
 - **Static Analysis:** Verified via `flutter analyze --no-pub` (272 baseline issues, 0 new errors).
+- **Debug APK Build:** Verified via `flutter build apk --debug`.
 
 ---
 
-## 9. Current Limitations & Roadmap
+## 10. Current Limitations & Roadmap
 
-- **Status:** Backend foundation, TypeScript build system, initialization, authorization helpers, structured logging, safe error handling, and architecture blueprint are fully implemented and verified.
+- **Status:** Backend foundation, TypeScript build system, authorization helpers, structured logging, safe error handling, authoritative job lifecycle finite-state machine, transactional application acceptance, and architecture blueprint are fully implemented and verified.
 - **Pending Implementation:**
   1. Live Razorpay merchant account configuration in Google Cloud Secret Manager.
   2. Full webhook HTTPS endpoint implementation and transaction handlers.

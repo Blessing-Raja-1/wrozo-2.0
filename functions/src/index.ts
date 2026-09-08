@@ -2,6 +2,16 @@ import { onCall, CallableRequest } from "firebase-functions/v2/https";
 import { getBackendConfig } from "./config/environment";
 import { handleFunctionError } from "./shared/errors";
 import { logger } from "./shared/logger";
+import { jobService } from "./jobs/job_service";
+import { applicationService } from "./applications/application_service";
+import {
+  CreateJobInput,
+  TransitionJobStatusInput,
+  ApplyForJobInput,
+  AcceptApplicationInput,
+  RejectApplicationInput,
+  WithdrawApplicationInput,
+} from "./shared/types";
 
 // Export services and configuration for backend modularity
 export * from "./config/firebase";
@@ -16,17 +26,13 @@ export * from "./applications/application_service";
 export * from "./chat/chat_service";
 export * from "./payments/payment_service";
 
+const REGION = "asia-south1";
+
 /**
  * Authoritative Backend Status / Healthcheck Callable Function
- *
- * Provides safe verification of server connectivity, configuration, and auth context
- * without exposing internal keys, credentials, or environment secrets.
  */
 export const getBackendStatus = onCall(
-  {
-    region: "asia-south1",
-    cors: true,
-  },
+  { region: REGION, cors: true },
   async (request: CallableRequest) => {
     try {
       const config = getBackendConfig();
@@ -48,6 +54,93 @@ export const getBackendStatus = onCall(
       };
     } catch (error) {
       throw handleFunctionError(error, "getBackendStatus", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Job Creation Callable
+ */
+export const createJob = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<CreateJobInput>) => {
+    try {
+      return await jobService.createJob(request, request.data);
+    } catch (error) {
+      throw handleFunctionError(error, "createJob", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Job Lifecycle State Transition Callable
+ */
+export const transitionJobStatus = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<TransitionJobStatusInput>) => {
+    try {
+      await jobService.transitionJobStatus(request, request.data);
+      return { success: true };
+    } catch (error) {
+      throw handleFunctionError(error, "transitionJobStatus", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Worker Job Application Callable
+ */
+export const applyForJob = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<ApplyForJobInput>) => {
+    try {
+      return await applicationService.applyForJob(request, request.data);
+    } catch (error) {
+      throw handleFunctionError(error, "applyForJob", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Transactional Application Acceptance Callable
+ */
+export const acceptApplication = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<AcceptApplicationInput>) => {
+    try {
+      return await applicationService.acceptApplication(request, request.data);
+    } catch (error) {
+      throw handleFunctionError(error, "acceptApplication", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Application Rejection Callable
+ */
+export const rejectApplication = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<RejectApplicationInput>) => {
+    try {
+      await applicationService.rejectApplication(request, request.data);
+      return { success: true };
+    } catch (error) {
+      throw handleFunctionError(error, "rejectApplication", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Worker Application Withdrawal Callable
+ */
+export const withdrawApplication = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<WithdrawApplicationInput>) => {
+    try {
+      await applicationService.withdrawApplication(request, request.data);
+      return { success: true };
+    } catch (error) {
+      throw handleFunctionError(error, "withdrawApplication", request.auth?.uid);
     }
   }
 );
