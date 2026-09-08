@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- P0 Build Foundation (Android & Test Setup) Completed (VERIFIED: 2026-09-08)
+- Android Firebase Configuration Aligned & Debug APK Verified (VERIFIED: 2026-09-08)
 
 ## Current Objective
-- Resolve Android package configuration blocker (`google-services.json` mismatch) and Google Maps API key configuration; fix pre-existing UI and localization issues (PLANNED)
+- Address pre-existing UI navigation, chat transaction conflict, and localization blockers (PLANNED)
 
 ## Overall Status
-- P0 Security fixes and P0 Build Foundation completed. Widget test (`test/widget_test.dart`) compiles and passes (1/1). Google Services Gradle plugin configured in `settings.gradle.kts` and `app/build.gradle.kts`. Android network and location permissions configured in `AndroidManifest.xml`. Analyzer error count reduced to 38 (0 errors in modified files). Android debug APK build is blocked by `google-services.json` package name mismatch (PARTIAL / BLOCKED)
+- Android Firebase configuration aligned. `android/app/google-services.json` contains `com.wrozo.wrozo`. Android debug APK build succeeded (`build\app\outputs\flutter-apk\app-debug.apk`). Widget test (`test/widget_test.dart`) passes (1/1). Analyzer error count remains at 38 pre-existing errors in unmaintained screens (0 errors introduced) (VERIFIED)
 
 ## Completed
 - Verified active workspace location and Git remote / branch tracking (VERIFIED)
@@ -33,16 +33,18 @@
 - **BUILD-01 (Widget Test):** Replaced non-existent `MyApp` with `WrozoApp` wrapped in `ProviderScope` with `appUserProvider` override in `test/widget_test.dart`. Test compiles and passes (1/1) (VERIFIED)
 - **BUILD-02 (Google Services Plugin):** Added `com.google.gms.google-services:4.4.2` to `android/settings.gradle.kts` and applied in `android/app/build.gradle.kts` (VERIFIED)
 - **BUILD-03 (Android Permissions):** Added `INTERNET`, `ACCESS_FINE_LOCATION`, and `ACCESS_COARSE_LOCATION` to `android/app/src/main/AndroidManifest.xml` (VERIFIED)
+- Pushed build foundation checkpoint commit `ff00756` to `origin/main` (VERIFIED)
+- **FIREBASE-01 (Android Configuration):** Configured official `android/app/google-services.json` containing `com.wrozo.wrozo` matching `android/app/build.gradle.kts` `applicationId` (VERIFIED)
 - Executed verification commands:
-  - `flutter analyze --no-pub`: 38 errors (down from 39; 0 errors introduced in modified files) (VERIFIED)
+  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
   - `flutter test test/widget_test.dart`: 1/1 passed (VERIFIED)
-  - `flutter build apk --debug`: failed at `:app:processDebugGoogleServices` due to package name mismatch between `google-services.json` (`com.example.wrozo`) and `applicationId` (`com.wrozo.wrozo`) (BLOCKED)
+  - `flutter analyze --no-pub`: 38 errors (0 errors introduced) (VERIFIED)
+  - `git diff --check`: clean (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
 
 ## Blocked
-- Android debug APK build blocked: `:app:processDebugGoogleServices` fails because `android/app/google-services.json` defines package `com.example.wrozo` while `android/app/build.gradle.kts` defines `applicationId = "com.wrozo.wrozo"`. Requires regenerating `google-services.json` for `com.wrozo.wrozo` or updating `applicationId` (BLOCKED / CONFIGURATION REQUIRED)
 - Google Maps API key metadata missing: no key exists in repository; withheld from `AndroidManifest.xml` to prevent committing fake/hardcoded credentials (BLOCKED / CONFIGURATION REQUIRED)
 - Production release blocked by remaining non-build blockers (chat batch conflict, unwired navigation, missing localization arb files) (BLOCKED)
 
@@ -51,7 +53,7 @@
 - `ChatRepository.sendMessage` fails against Firestore rules: merges `participants` field which violates update rule (`affectedKeys().hasAny(['participants'])`), and first message fails `get()` check on non-existent conversation document (VERIFIED)
 - Android runtime crash: `AndroidManifest.xml` permissions added (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) (VERIFIED)
 - Android runtime crash: `AndroidManifest.xml` lacks Google Maps API key meta-data (BLOCKED / CONFIGURATION REQUIRED)
-- Android build failure: `settings.gradle.kts` and `app/build.gradle.kts` Google Services plugin configured; now blocked by `google-services.json` package name mismatch (PARTIAL / BLOCKED)
+- Android build failure: Fixed. Google Services plugin and `google-services.json` aligned with `com.wrozo.wrozo`, debug APK built successfully (VERIFIED)
 - Unwired Navigation: `HomeScreen` provides no navigation routes or UI links to `JobDiscoveryScreen`, `JobPostingScreen`, `ProfileSetupScreen`, `ApplicantReviewScreen`, or `PaymentScreen` (VERIFIED)
 - Localization broken: `AppLocalizations` is not registered in `localizationsDelegates` in `main.dart`; missing arb files for supported locales (`hi`, `ta`, `te`, `mr`) (VERIFIED)
 
@@ -91,18 +93,18 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Tree:** Modified — `android/settings.gradle.kts`, `android/app/build.gradle.kts`, `android/app/src/main/AndroidManifest.xml`, `test/widget_test.dart`, `docs/current-status.md` (VERIFIED)
+- **Tree:** Modified — `android/app/google-services.json`, `docs/current-status.md` (VERIFIED)
 
 ## Last Completed Task
-- P0 Build Foundation: widget test fix, Android Gradle Google Services plugin, and Android permissions (VERIFIED)
+- Align Android Firebase configuration (`google-services.json` for `com.wrozo.wrozo`) and verify Android debug APK build succeeds (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Resolve Android package configuration blocker (`google-services.json` vs `applicationId`) and address pre-existing UI navigation / localization blockers (PLANNED)
+- Fix pre-existing application blockers: resolve chat transaction batch conflict, wire up HomeScreen navigation routes, and add missing localization arb files (PLANNED)
 
 ## Important Notes
-- Wrozo 2.0 cannot be deployed or launched on an Android device in its current state until the `google-services.json` package name mismatch is aligned with `applicationId` (`com.wrozo.wrozo`).
+- Android debug APK build is now fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
 - Payment features are completely inoperative by design until a server-side Cloud Function + payment gateway webhook integration (Razorpay) is implemented. The client payment code now explicitly fails safe.
 - Firestore rules for SEC-01 role immutability have not been verified against the Firebase Local Emulator. Manual staging verification required before production deploy.
