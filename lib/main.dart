@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-
-import 'core/theme/app_theme.dart';
-import 'core/routing/app_router.dart';
+import 'package:wrozo/core/localization/l10n/app_localizations.dart';
+import 'package:wrozo/core/routing/app_router.dart';
+import 'package:wrozo/core/theme/app_theme.dart';
+import 'package:wrozo/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,20 +28,11 @@ class WrozoApp extends ConsumerWidget {
     
     return MaterialApp.router(
       title: 'Wrozo',
+      onGenerateTitle: (context) => AppLocalizations.of(context)?.appTitle ?? 'Wrozo',
       theme: AppTheme.lightTheme,
       routerConfig: router,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('en'),
-        Locale('hi'),
-        Locale('ta'),
-        Locale('te'),
-        Locale('mr'),
-      ],
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
     );
   }
 }
