@@ -45,8 +45,10 @@ app.*.map.json
 /android/app/release
 **/android/local.properties
 
-# Node / Firebase Emulator testing
+# Node / Firebase Functions & Emulator testing
 node_modules/
+/functions/lib/
+/functions/.secret.local
 firebase-debug.log*
 firestore-debug.log*
 ui-debug.log*

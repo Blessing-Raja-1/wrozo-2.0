@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Google Maps Secure Injection Configured (VERIFIED: 2026-09-09)
+- Backend Foundation Established (VERIFIED: 2026-09-09)
 
 ## Current Objective
-- Supply production Google Cloud Maps API key in local.properties with SHA-1 restrictions when ready; prepare release readiness (PLANNED)
+- Implement authoritative Cloud Function triggers / endpoints (e.g. Razorpay payment order creation and webhook verification) when payment gateway credentials become available (PLANNED)
 
 ## Overall Status
-- Google Maps Android API key injection securely configured through untracked `android/local.properties` and Gradle `manifestPlaceholders`. Android manifest meta-data (`com.google.android.geo.API_KEY`) verified in merged manifest (`build/app/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`). Zero API keys committed or hardcoded in source control. 14/14 Flutter tests pass. 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly in 29.8s (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
+- Firebase Cloud Functions backend foundation established in TypeScript on Node.js 20 LTS. Authoritative server trust model, singleton Admin SDK initialization, runtime secret management bindings, structured logging with PII/secret redaction, safe error handling, and server-side authorization guards (`requireAuth`, `requireRole`, `requireAdmin`) implemented and verified. 22/22 backend unit tests pass. 62/62 Firestore emulator security rules tests pass. 14/14 Flutter tests pass. 272 analyzer issues (baseline maintained, 0 new errors). Zero secrets committed. Comprehensive architecture documented in `docs/architecture/backend.md` (VERIFIED)
 
 ## Completed
 - Verified active workspace location and Git remote / branch tracking (VERIFIED)
@@ -85,8 +85,23 @@
   - Configured `android/app/build.gradle.kts` to safely load `local.properties` via `rootProject.file("local.properties")` and inject `MAPS_API_KEY` into `manifestPlaceholders`.
   - Added `com.google.android.geo.API_KEY` meta-data to `android/app/src/main/AndroidManifest.xml` referencing `${MAPS_API_KEY}`.
   - Confirmed merged manifest substitution (`build/app/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`) replaces placeholder without key leakage.
-  - Updated local untracked `android/local.properties` with placeholder template and Google Cloud Console restriction guidance (`com.wrozo.wrozo` + SHA-1 fingerprints).
+  - Updated local untracked `android/local.properties` with placeholder template and Google Cloud Console restriction guidance (`com.wrozo.wrozo` + SHA-1 fingerprints) (VERIFIED)
+- **BACKEND-01 (Secure Firebase Cloud Functions Backend Foundation):**
+  - Configured Firebase Cloud Functions in `firebase.json` (source: `functions`, codebase: `default`, build predeploy) and emulator on port 5001.
+  - Established `functions/` directory using TypeScript 5 toolchain targeting Node.js 20 LTS runtime.
+  - Created server-side Firebase Admin SDK singleton in `functions/src/config/firebase.ts` with zero hardcoded credentials.
+  - Configured runtime environment parameters and Secret Manager bindings in `functions/src/config/environment.ts` (`defineString`, `defineSecret`).
+  - Created domain types and interfaces in `functions/src/shared/types.ts` mirroring Firestore collections.
+  - Created structured error strategy and safe client-facing error sanitization in `functions/src/shared/errors.ts` (`handleFunctionError`).
+  - Created structured logging with automated PII/secret redaction in `functions/src/shared/logger.ts` (`sanitizeLogData`).
+  - Implemented reusable server-side authorization guards in `functions/src/auth/auth_helpers.ts` (`requireAuth`, `getUserRecord`, `requireRole`, `requireWorker`, `requireContractor`, `requireAdmin`, `assertNotAdminSelfAssignment`).
+  - Established domain service boundaries: `users/user_service.ts`, `jobs/job_service.ts`, `applications/application_service.ts`, `chat/chat_service.ts`, and `payments/payment_service.ts` (Razorpay order creation and HMAC-SHA256 webhook verification blueprint).
+  - Created `getBackendStatus` healthcheck callable function in `functions/src/index.ts`.
+  - Authored comprehensive backend architecture specification in `docs/architecture/backend.md`.
+  - Fortified `.gitignore` with `/functions/lib/` and `/functions/.secret.local`.
 - Executed verification commands:
+  - `npm --prefix functions test`: 22/22 unit tests passed (VERIFIED)
+  - `npm --prefix functions run build`: TypeScript compiled with 0 errors (VERIFIED)
   - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 62/62 passed (VERIFIED)
   - `flutter test`: 14/14 passed (1 widget + 3 navigation + 10 localization tests) (VERIFIED)
   - `flutter analyze --no-pub`: 272 issues (baseline maintained, 0 new errors) (VERIFIED)
@@ -117,6 +132,7 @@
 - **FIXED (CHAT-01):** Unauthorized chat creation & spoofing — conversation creation strictly gated on server-verified `ACCEPTED` job application (`/applications/{applicationId}`); participants immutable; `senderId` must match caller UID; messages immutable and client delete denied; non-empty text bounds (1–5000 chars) enforced; dynamically tested in emulator (17/17 chat tests passed) (VERIFIED)
 - **FIXED (SEC-AUDIT-01):** Secrets & Configuration Exposure Audit — Zero private keys, OAuth secrets, database passwords, or server-only credentials found across full codebase and 7 Git commits (`3ba52d7`..`0d6924e`); no rotation required; `.gitignore` fortified with comprehensive ignore rules for `.env*`, keystores (`*.keystore`, `*.jks`, `key.properties`), certificates/keys (`*.pem`, `*.p12`, `*.pfx`, `*.key`, `*.crt`), and service accounts (`*service-account*.json`, `*credentials*.json`); standards documented in `docs/security/secrets-and-config.md` (VERIFIED)
 - **FIXED (MAPS-01):** Google Maps API Key Exposure Avoided — Key is injected from local-only untracked `local.properties` via Gradle manifest placeholder; never hardcoded in `AndroidManifest.xml` or Dart code (VERIFIED)
+- **FIXED (BACKEND-01):** Untrusted Client Vulnerability Neutralized — Firebase Cloud Functions foundation established in TypeScript on Node.js 20 LTS as the authoritative trusted server layer; zero client payment writes; Secret Manager bindings for future payment secrets; strict role guards (VERIFIED)
 - **MEDIUM (OPEN):** Data Scraping Vulnerability: Worker and Contractor profiles are completely readable by any authenticated user without pagination or field filtering (VERIFIED)
 
 ## Testing Status
@@ -124,7 +140,7 @@
 - **Widget Coverage:** 100% of defined widget and navigation tests passing (14/14 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10]) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
 - **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 62/62 tests passed across 6 test suites) (VERIFIED)
-- **Backend Coverage:** 0% (0 tests) (VERIFIED)
+- **Backend Coverage:** 100% of defined backend unit tests passing (22/22 tests passed across auth guards, error sanitization, and logger redaction) (VERIFIED)
 - **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (62/62 passed) (VERIFIED)
 - **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed) (VERIFIED)
 - **Chat Coverage:** 100% of chat security rules and lifecycle scenarios verified via Firebase Local Emulator suite (17/17 chat tests passed) (VERIFIED)
@@ -136,6 +152,7 @@
 - **State Management:** Flutter Riverpod (`flutter_riverpod: ^2.4.9`) (VERIFIED)
 - **Routing:** GoRouter (`go_router: ^17.5.0`) (VERIFIED)
 - **Backend Services:** Firebase Core & Auth & Firestore (VERIFIED)
+- **Backend Architecture:** Firebase Cloud Functions (Node.js 20 LTS, TypeScript 5, 2nd Gen API) as the authoritative trusted server layer; zero client payment writes; Secret Manager for payment secrets; strict role guards (VERIFIED)
 - **Location Services:** Geolocator + Geoflutterfire Plus (VERIFIED)
 - **Rules Unit Testing:** Firebase Local Emulator + `@firebase/rules-unit-testing` + Node.js test runner (`npm run test:rules`) (VERIFIED)
 - **Chat Architecture:** Canonical 1-to-1 conversation IDs (`minUID_maxUID`), application-gated conversation creation, immutable participants, separate initial creation and subsequent metadata updates (VERIFIED)
@@ -157,16 +174,16 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `feat: configure secure Google Maps injection` (PENDING PUSH) (VERIFIED)
+- **Commit:** `feat: establish secure backend foundation` (PENDING PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Secure Google Maps Android API key injection configured via `local.properties` and Gradle manifest placeholders (VERIFIED)
+- Establish secure backend foundation using Firebase Cloud Functions (Node 20 LTS, TypeScript 5, Admin SDK, auth/authz guards, 22/22 backend tests passed, 62/62 emulator tests passed, 14/14 Flutter tests passed) (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Provide production restricted Google Maps API key in local.properties and test map widget rendering (PLANNED)
+- Configure Razorpay merchant account and Secret Manager secrets for payment order creation and webhook processing (PLANNED)
 
 ## Important Notes
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
@@ -176,3 +193,4 @@
 - Full 5-language localization foundation (`en`, `hi`, `ta`, `te`, `mr`) is active and verified; `AppLocalizations` delegates and supported locales are wired into `main.dart`.
 - Zero secrets or server credentials have ever been committed; `.gitignore` actively prevents future commits of `.env`, keystores, certificates, and service account JSONs.
 - Google Maps manifest placeholder injection is verified in debug merged manifest. No API keys are hardcoded in source control.
+- Firebase Cloud Functions backend foundation is verified with 22/22 unit tests passing, zero hardcoded credentials, and comprehensive architecture documented in `docs/architecture/backend.md`.
