@@ -12,6 +12,10 @@ import '../../features/chat/presentation/screens/chat_inbox_screen.dart';
 import '../../features/chat/presentation/screens/conversation_screen.dart';
 import '../../features/payments/presentation/screens/payment_screen.dart';
 import '../../features/reviews/presentation/screens/review_screen.dart';
+import '../../features/jobs/presentation/screens/job_discovery_screen.dart';
+import '../../features/jobs/presentation/screens/job_posting_screen.dart';
+import '../../features/profile/presentation/screens/profile_setup_screen.dart';
+import '../../features/applications/presentation/screens/applicant_review_screen.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   final appUserAsync = ref.watch(appUserProvider);
@@ -80,6 +84,24 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => ReviewScreen(
           jobId: state.pathParameters['jobId']!,
           revieweeId: state.pathParameters['revieweeId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/jobs/discover',
+        builder: (context, state) => const JobDiscoveryScreen(),
+      ),
+      GoRoute(
+        path: '/jobs/post',
+        builder: (context, state) => const JobPostingScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfileSetupScreen(),
+      ),
+      GoRoute(
+        path: '/applicant_review/:jobId',
+        builder: (context, state) => ApplicantReviewScreen(
+          jobId: state.pathParameters['jobId']!,
         ),
       ),
     ],

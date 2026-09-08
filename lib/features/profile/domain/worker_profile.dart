@@ -23,7 +23,7 @@ class WorkerProfile {
     return WorkerProfile(
       uid: uid,
       name: data['name'] as String? ?? '',
-      skills: List<String>.from(data['skills'] ?? []),
+      skills: List<String>.from((data['skills'] as Iterable?) ?? []),
       expectedWage: data['expectedWage'] as int? ?? 0,
       isAvailable: data['isAvailable'] as bool? ?? true,
       rating: (data['rating'] as num?)?.toDouble() ?? 0.0,

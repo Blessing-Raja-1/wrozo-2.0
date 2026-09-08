@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/primary_button.dart';
-import '../../../../core/widgets/custom_text_field.dart';
-import '../../authentication/data/auth_repository.dart';
-import '../profile_controller.dart';
-import '../domain/worker_profile.dart';
-import '../domain/contractor_profile.dart';
+import 'package:wrozo/core/widgets/primary_button.dart';
+import 'package:wrozo/core/widgets/custom_text_field.dart';
+import 'package:wrozo/features/authentication/data/auth_repository.dart';
+import 'package:wrozo/features/profile/presentation/profile_controller.dart';
+import 'package:wrozo/features/profile/domain/worker_profile.dart';
+import 'package:wrozo/features/profile/domain/contractor_profile.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
   const ProfileSetupScreen({super.key});

@@ -45,13 +45,18 @@ class JobRepository {
   }
 
   Stream<List<Job>> watchNearbyJobs(GeoFirePoint center, double radiusInKm) {
-    final collectionReference = _firestore.collection('jobs').where('status', isEqualTo: 'OPEN');
-    return GeoCollectionReference(collectionReference).subscribeWithin(
-      center: center,
-      radiusInKm: radiusInKm,
-      field: 'geohash',
-      documentMapper: (docData) => Job.fromMap(docData.id, docData.data() as Map<String, dynamic>),
-    );
+    final collectionReference = _firestore.collection('jobs');
+    return GeoCollectionReference<Map<String, dynamic>>(collectionReference)
+        .subscribeWithin(
+          center: center,
+          radiusInKm: radiusInKm,
+          field: 'geohash',
+          geopointFrom: (data) => (data['location'] as GeoPoint?) ?? const GeoPoint(0, 0),
+          queryBuilder: (query) => query.where('status', isEqualTo: 'OPEN'),
+        )
+        .map((snapshots) => snapshots
+            .map((doc) => Job.fromMap(doc.id, doc.data() ?? {}))
+            .toList());
   }
 
   Stream<List<Job>> watchContractorJobs(String contractorId) {

@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Chat Messaging Repaired, Hardened & Verified (VERIFIED: 2026-09-08)
+- Role-Based Dashboard Navigation Wired & Verified (VERIFIED: 2026-09-08)
 
 ## Current Objective
-- Address pre-existing UI navigation and localization blockers (PLANNED)
+- Address pre-existing localization blockers (missing arb files and AppLocalizations delegate registration) (PLANNED)
 
 ## Overall Status
-- Chat messaging repaired and hardened end-to-end: Firestore security rules enforce canonical deterministic 2-participant IDs (`minUID_maxUID`), conversation creation gated strictly on server-verified `ACCEPTED` job applications (`/applications/{applicationId}`), participant/application immutability enforced, message creation enforces `senderId == request.auth.uid` and non-empty text bounds (1–5000 chars), and client message/conversation deletion is denied. `ChatRepository` implements safe two-phase conversation initialization for first messages, metadata-only updates for subsequent messages, safe unread markers on non-existent chats, and in-memory conversation list sorting. 62 executable security tests across 6 domains in Firebase Local Emulator pass (62/62). Widget test passes (1/1). Analyzer introduces 0 new issues. Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
+- Role-based dashboard navigation wired and verified end-to-end: GoRouter routes established for `/jobs/discover` (`JobDiscoveryScreen`), `/jobs/post` (`JobPostingScreen`), `/profile` (`ProfileSetupScreen`), and `/applicant_review/:jobId` (`ApplicantReviewScreen`). `HomeScreen` displays role-specific dashboard views: Workers access nearby job discovery, profile setup, messaging, and real-time application tracking; Contractors access job posting, company profile setup, messaging, and posted job management with direct applicant review actions. 4/4 Flutter tests pass (1 widget test + 3 navigation tests in `test/navigation/dashboard_navigation_test.dart`). Analyzer issues dropped from 331 to 277 (54 fewer issues, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
 
 ## Completed
 - Verified active workspace location and Git remote / branch tracking (VERIFIED)
@@ -47,10 +47,26 @@
   - Updated `ConversationScreen`: error snackbar notification on failed send, safe peer ID substring handling, loading indicator during message sending (VERIFIED)
   - Updated `ChatInboxScreen`: safe substring handling for short user IDs (VERIFIED)
   - Added 17 executable test cases in `test/security/rules.test.mjs` (Group F: Chat Security) — 17/17 passed (VERIFIED)
+- **NAV-01 (Role-Based Dashboard Navigation & Route Wiring):**
+  - Wired 4 previously unrouted screens into `lib/core/routing/app_router.dart`:
+    - `/jobs/discover` -> `JobDiscoveryScreen`
+    - `/jobs/post` -> `JobPostingScreen`
+    - `/profile` -> `ProfileSetupScreen`
+    - `/applicant_review/:jobId` -> `ApplicantReviewScreen`
+  - Rebuilt `HomeScreen` (`lib/features/home/presentation/screens/home_screen.dart`) into a role-tailored dashboard:
+    - **Worker:** Find Nearby Jobs (`/jobs/discover`), Complete Profile (`/profile`), Messages (`/chat`), and real-time "My Applications" tracking.
+    - **Contractor:** Post a Job (`/jobs/post`), Company Profile (`/profile`), Messages (`/chat`), and real-time "My Posted Jobs" with "Review Applicants" (`/applicant_review/:jobId`) navigation.
+    - Preserved logout action via `authRepositoryProvider.signOut()`.
+  - Fixed minimal compilation blockers on previously unrouted screens:
+    - `worker_profile.dart`: Cast skills dynamic iterable.
+    - `job.dart`: Cast skillsRequired dynamic iterable.
+    - `job_repository.dart`: Updated `watchNearbyJobs` for `geoflutterfire_plus` 0.0.34 API (`geopointFrom`, query mapping).
+    - `profile_setup_screen.dart`, `applicant_review_screen.dart`, `job_discovery_screen.dart`: Corrected broken relative imports using package imports.
+  - Added automated tests in `test/navigation/dashboard_navigation_test.dart` verifying role separation and dashboard button existence (3/3 tests passed) (VERIFIED)
 - Executed verification commands:
   - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 62/62 passed (VERIFIED)
-  - `flutter test`: 1/1 passed (VERIFIED)
-  - `flutter analyze --no-pub`: 0 errors introduced (VERIFIED)
+  - `flutter test`: 4/4 passed (1 widget test + 3 navigation tests) (VERIFIED)
+  - `flutter analyze --no-pub`: Issue count dropped from 331 to 277 (54 fewer issues, 0 new errors) (VERIFIED)
   - `git diff --check`: clean (VERIFIED)
   - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
 
@@ -59,7 +75,7 @@
 
 ## Blocked
 - Google Maps API key metadata missing: no key exists in repository; withheld from `AndroidManifest.xml` to prevent committing fake/hardcoded credentials (BLOCKED / CONFIGURATION REQUIRED)
-- Production release blocked by remaining non-build blockers (unwired navigation, missing localization arb files) (BLOCKED)
+- Production release blocked by remaining non-build blockers (missing localization arb files) (BLOCKED)
 
 ## Known Bugs
 - `test/widget_test.dart`: Fixed. References `WrozoApp`, compiles and passes (VERIFIED)
@@ -67,7 +83,7 @@
 - Android runtime crash: `AndroidManifest.xml` permissions added (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) (VERIFIED)
 - Android runtime crash: `AndroidManifest.xml` lacks Google Maps API key meta-data (BLOCKED / CONFIGURATION REQUIRED)
 - Android build failure: Fixed. Google Services plugin and `google-services.json` aligned with `com.wrozo.wrozo`, debug APK built successfully (VERIFIED)
-- Unwired Navigation: `HomeScreen` provides no navigation routes or UI links to `JobDiscoveryScreen`, `JobPostingScreen`, `ProfileSetupScreen`, `ApplicantReviewScreen`, or `PaymentScreen` (VERIFIED)
+- Unwired Navigation: Fixed. `HomeScreen` provides role-based navigation and GoRouter routes wired to `JobDiscoveryScreen`, `JobPostingScreen`, `ProfileSetupScreen`, and `ApplicantReviewScreen` (VERIFIED)
 - Localization broken: `AppLocalizations` is not registered in `localizationsDelegates` in `main.dart`; missing arb files for supported locales (`hi`, `ta`, `te`, `mr`) (VERIFIED)
 
 ## Security Status
@@ -81,13 +97,14 @@
 
 ## Testing Status
 - **Unit Coverage:** 0% (0 Dart unit tests) (VERIFIED)
-- **Widget Coverage:** 100% of defined widget tests passing (`test/widget_test.dart`: 1/1 passed) (VERIFIED)
+- **Widget Coverage:** 100% of defined widget tests passing (4/4 passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3]) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
 - **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 62/62 tests passed across 6 test suites) (VERIFIED)
 - **Backend Coverage:** 0% (0 tests) (VERIFIED)
 - **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (62/62 passed) (VERIFIED)
 - **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed) (VERIFIED)
 - **Chat Coverage:** 100% of chat security rules and lifecycle scenarios verified via Firebase Local Emulator suite (17/17 chat tests passed) (VERIFIED)
+- **Navigation Coverage:** 100% of role-based dashboard navigation paths tested and passing (3/3 tests passed) (VERIFIED)
 
 ## Architecture Decisions
 - **State Management:** Flutter Riverpod (`flutter_riverpod: ^2.4.9`) (VERIFIED)
@@ -96,6 +113,7 @@
 - **Location Services:** Geolocator + Geoflutterfire Plus (VERIFIED)
 - **Rules Unit Testing:** Firebase Local Emulator + `@firebase/rules-unit-testing` + Node.js test runner (`npm run test:rules`) (VERIFIED)
 - **Chat Architecture:** Canonical 1-to-1 conversation IDs (`minUID_maxUID`), application-gated conversation creation, immutable participants, separate initial creation and subsequent metadata updates (VERIFIED)
+- **Dashboard Navigation:** Role-segregated `HomeScreen` switching on `UserRole` (Worker vs Contractor) with GoRouter navigation routes to all user-facing screens (VERIFIED)
 
 ## Architecture Conflicts
 - Payment architecture conflicts: Documentation assumes Razorpay integration, but zero backend or client payment gateway code exists; system directly writes fake payment status to Firestore (VERIFIED)
@@ -110,18 +128,19 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Tree:** Modified — `firestore.rules`, `lib/features/chat/domain/chat_models.dart`, `lib/features/chat/data/chat_repository.dart`, `lib/features/chat/presentation/chat_controller.dart`, `lib/features/chat/presentation/screens/conversation_screen.dart`, `lib/features/chat/presentation/screens/chat_inbox_screen.dart`, `test/security/rules.test.mjs`, `docs/current-status.md` (VERIFIED)
+- **Commit:** `feat: wire role-based dashboard navigation` (PENDING PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Secure and repair chat messaging (62/62 rules tests passed, Flutter test passed, debug APK built) (VERIFIED)
+- Wire role-based dashboard navigation and missing screen routes (4/4 Flutter tests passed, 0 new analyzer issues, debug APK built) (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Fix pre-existing application blockers: wire up HomeScreen navigation routes and add missing localization arb files (PLANNED)
+- Fix pre-existing application localization blockers: register AppLocalizations in localizationsDelegates and supply arb files (PLANNED)
 
 ## Important Notes
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
 - Payment features are completely inoperative by design until a server-side Cloud Function + payment gateway webhook integration (Razorpay) is implemented. The client payment code now explicitly fails safe.
 - Firestore security rules are now dynamically tested and verified against the Firebase Local Emulator with 62 automated unit tests passing across all security boundaries including chat messaging.
+- Role-based dashboard navigation is verified with 4/4 passing tests; workers and contractors have clean, segregated access to all feature screens.

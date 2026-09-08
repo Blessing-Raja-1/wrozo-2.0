@@ -46,7 +46,7 @@ class Job {
       contractorId: data['contractorId'] as String? ?? '',
       title: data['title'] as String? ?? '',
       description: data['description'] as String? ?? '',
-      skillsRequired: List<String>.from(data['skillsRequired'] ?? []),
+      skillsRequired: List<String>.from((data['skillsRequired'] as Iterable?) ?? []),
       wage: data['wage'] as int? ?? 0,
       status: parseStatus(data['status'] as String?),
       workerCountNeeded: data['workerCountNeeded'] as int? ?? 1,

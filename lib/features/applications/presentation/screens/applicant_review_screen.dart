@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../data/application_repository.dart';
-import '../presentation/application_controller.dart';
-import '../../../../core/theme/app_colors.dart';
+import 'package:wrozo/features/applications/data/application_repository.dart';
+import 'package:wrozo/features/applications/presentation/application_controller.dart';
+import 'package:wrozo/core/theme/app_colors.dart';
 
 class ApplicantReviewScreen extends ConsumerWidget {
   final String jobId;

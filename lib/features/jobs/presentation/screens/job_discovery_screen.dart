@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../data/job_repository.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../applications/presentation/application_controller.dart';
-import '../../../../core/widgets/primary_button.dart';
-import '../../../../core/services/location_service.dart';
+import 'package:wrozo/features/jobs/data/job_repository.dart';
+import 'package:wrozo/core/theme/app_colors.dart';
+import 'package:wrozo/features/applications/presentation/application_controller.dart';
+import 'package:wrozo/core/widgets/primary_button.dart';
+import 'package:wrozo/core/services/location_service.dart';
 
 class JobDiscoveryScreen extends ConsumerWidget {
   const JobDiscoveryScreen({super.key});
