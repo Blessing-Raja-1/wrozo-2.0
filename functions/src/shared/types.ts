@@ -174,3 +174,29 @@ export interface ReviewRecord {
   comment: string;
   createdAt: Timestamp;
 }
+
+export type DevicePlatform = "android" | "ios" | "web" | "other";
+
+export interface DeviceTokenRecord {
+  token: string;
+  platform: DevicePlatform;
+  deviceId?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface RegisterDeviceTokenInput {
+  token: string;
+  platform?: DevicePlatform;
+  deviceId?: string;
+}
+
+export interface UnregisterDeviceTokenInput {
+  token: string;
+}
+
+export interface NotificationPayload {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}

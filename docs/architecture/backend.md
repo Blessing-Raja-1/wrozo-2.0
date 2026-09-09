@@ -100,8 +100,13 @@ The backend layer serves as the **authoritative trust boundary** for the applica
   - `role`: optional `'WORKER' | 'CONTRACTOR' | 'ADMIN'`
   - `status`: `'ACTIVE' | 'SUSPENDED'`
   - `createdAt`: server timestamp
-  - `fcmTokens`: optional string array
-- **Rules:** Owner read; initial create allows only phone/status/createdAt; update allows setting role once if missing (WORKER or CONTRACTOR only). Client cannot assign ADMIN.
+  - `fcmTokens`: optional legacy string array
+- **Subcollection:** `users/{userId}/device_tokens/{tokenId}`
+  - `token`: string (FCM registration token)
+  - `platform`: `'android' | 'ios' | 'web'`
+  - `createdAt`: timestamp
+  - `updatedAt`: timestamp
+- **Rules:** Owner read and write (`allow read, write: if isOwner(userId);`); unauthenticated and cross-user access strictly denied. Client cannot modify or view other users' tokens.
 
 ### 2. `worker_profiles/{userId}`
 - **Document ID:** Worker UID.
@@ -271,6 +276,14 @@ Executed inside an atomic Firestore transaction (`db.runTransaction`):
 | `acceptApplication` | `CONTRACTOR` | `AcceptApplicationInput` | `{ applicationId, jobStatus }` | Transactionally accepts worker and enforces capacity limits |
 | `rejectApplication` | `CONTRACTOR` | `RejectApplicationInput` | `{ success }` | Authoritatively rejects a PENDING application |
 | `withdrawApplication` | `WORKER` | `WithdrawApplicationInput` | `{ success }` | Allows worker to withdraw a PENDING application |
+| `registerDeviceToken` | Authenticated User | `RegisterDeviceTokenInput` | `{ success }` | Registers or refreshes FCM device token under caller subcollection |
+| `unregisterDeviceToken` | Authenticated User | `UnregisterDeviceTokenInput` | `{ success }` | Removes FCM device token from caller subcollection upon logout |
+
+### Firestore Background Triggers Catalog
+
+| Trigger Name | Event Type | Target Collection | Description |
+| :--- | :--- | :--- | :--- |
+| `onChatMessageCreated` | `onDocumentCreated` | `conversations/{conversationId}/messages/{messageId}` | Dispatches FCM push notification to peer participant with strict sender exclusion |
 
 ---
 
@@ -351,7 +364,88 @@ Executed inside an atomic Firestore transaction (`db.runTransaction`):
 
 ---
 
-## 7. Error Handling & Structured Logging
+## 7. Secure Push Notifications Architecture (FCM)
+
+```
+[Server Event Trigger]
+(Application, Job, Payment, Chat)
+         │
+         │ Authoritative Server Context
+         ▼
+┌─────────────────────────────────────────┐
+│        NotificationService              │
+│                                         │
+│ • Domain notification helpers           │
+│ • Batch user resolution                 │
+│ • Stale token auto-cleanup              │
+└──────────────────┬──────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────┐
+│        TokenService                     │
+│                                         │
+│ • Reads /users/{userId}/device_tokens   │
+│ • Multi-device token retrieval          │
+│ • Safe ID sanitization                  │
+└──────────────────┬──────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────┐
+│    MessagingGateway (Admin SDK FCM)     │
+│                                         │
+│ • Multicast payload dispatch            │
+│ • Detects invalid / unregistered tokens │
+│ • Prunes dead tokens from Firestore     │
+└──────────────────┬──────────────────────┘
+                   │ FCM Network
+                   ▼
+        [Client Device(s)]
+```
+
+### 1. Device Token Subcollection Management (`TokenService`)
+- Tokens are stored under `users/{userId}/device_tokens/{tokenId}` where `tokenId` is a sanitized, deterministic document ID.
+- **Multiple Devices:** Users can register multiple devices (phone, tablet). Tokens are managed individually, enabling simultaneous push alerts.
+- **Security:** Governed by `firestore.rules`:
+  ```
+  match /users/{userId}/device_tokens/{tokenId} {
+    allow read, write: if isOwner(userId);
+  }
+  ```
+  Only the authenticated owner may register, list, or delete their device tokens. Cross-user token reads and modifications are strictly rejected at the database layer.
+- **Callable Endpoints:**
+  - `registerDeviceToken`: Authenticates caller, validates token length and characters, stores platform metadata (`android`, `ios`, `web`) with `updatedAt`.
+  - `unregisterDeviceToken`: Authenticates caller, removes target token on logout.
+
+### 2. Authoritative Server-Side Triggers Only
+Clients are strictly forbidden from initiating or specifying push notifications. Notifications are dispatched only by authoritative server code upon validated state changes:
+- **Applications:**
+  - `applyForJob`: Alerts contractor of new applicant (`type: "new_application"`).
+  - `acceptApplication`: Alerts worker that application was accepted (`type: "application_accepted"`).
+  - `rejectApplication`: Alerts worker that application was rejected (`type: "application_rejected"`).
+  - `withdrawApplication`: Alerts contractor that worker withdrew (`type: "application_withdrawn"`).
+- **Jobs:**
+  - `transitionJobStatus` (`COMPLETED`): Alerts accepted workers that job is complete (`type: "job_completed"`).
+  - `transitionJobStatus` (`CANCELLED`): Alerts accepted workers that job was cancelled (`type: "job_cancelled"`).
+- **Payments:**
+  - `CAPTURED`: Alerts worker of successful payment received and contractor of receipt (`type: "payment_captured"`).
+  - `FAILED`: Alerts contractor of payment failure (`type: "payment_failed"`).
+  - `REFUNDED`: Alerts both participants of refund processed (`type: "payment_refunded"`).
+- **Chat:**
+  - `onChatMessageCreated` background Firestore trigger: Resolves conversation participants from parent document, strictly excludes message sender, and dispatches push alert to the recipient (`type: "new_message"`).
+
+### 3. Chat Notification Sender Exclusion
+- Chat trigger reads `conversations/{conversationId}` to identify participants.
+- If `message.senderId` is equal to recipient UID, dispatch is skipped.
+- Recipient is strictly derived from server conversation state, preventing client spoofing of notification recipients.
+
+### 4. Self-Healing Token Lifecycle & Invalid Token Pruning
+- When `admin.messaging().sendEachForMulticast()` returns errors:
+  - Error codes `messaging/invalid-registration-token` and `messaging/registration-token-not-registered` identify expired or uninstalled app tokens.
+- `NotificationService` automatically calls `TokenService.removeInvalidTokens(userId, invalidTokens)` to delete dead tokens from `/users/{userId}/device_tokens/{tokenId}`.
+
+---
+
+## 8. Error Handling & Structured Logging
 
 ### Safe Error Handling Policy
 1. Internal errors and database stack traces are caught by `handleFunctionError`.
@@ -366,7 +460,7 @@ Executed inside an atomic Firestore transaction (`db.runTransaction`):
 
 ---
 
-## 8. Secrets & Environment Configuration Policy
+## 9. Secrets & Environment Configuration Policy
 
 1. **Strict No-Secrets Rule:** No API keys, private keys, service account JSONs, or credentials are saved in Git.
 2. **Runtime Parameters:** Non-sensitive parameters (e.g. `DEPLOYMENT_ENV`, `APP_REGION`) are configured via `firebase-functions/params` `defineString()`.
@@ -379,21 +473,21 @@ Executed inside an atomic Firestore transaction (`db.runTransaction`):
 
 ---
 
-## 9. Verification & Testing Strategy
+## 10. Verification & Testing Strategy
 
 - **Backend Unit Tests:** Run via `npm test` using Node.js built-in test runner (`node:test`, `node:assert`).
-  - Covers auth guards, role checks, admin self-assignment blocking, error mapping, log sanitization, job finite-state machine, and application workflows (42/42 tests passing).
-- **Firestore Security Rules:** Verified against Firebase Local Emulator (`62/62 passing`).
-- **Flutter Client Integration:** Verified via `flutter test` (`14/14 passing`).
+  - Covers auth guards, role checks, admin self-assignment blocking, error mapping, log sanitization, job finite-state machine, application workflows, Razorpay order creation, state machine transitions, webhook HMAC verification, token management, FCM multicast delivery, and chat sender exclusion (97/97 tests passing across 32 suites).
+- **Firestore Security Rules:** Verified against Firebase Local Emulator (`69/69 passing across 7 test groups`).
+- **Flutter Client Integration:** Verified via `flutter test` (`18/18 passing`).
 - **Static Analysis:** Verified via `flutter analyze --no-pub` (272 baseline issues, 0 new errors).
 - **Debug APK Build:** Verified via `flutter build apk --debug`.
 
 ---
 
-## 10. Current Limitations & Roadmap
+## 11. Current Limitations & Roadmap
 
-- **Status:** Backend foundation, TypeScript build system, authorization helpers, structured logging, safe error handling, authoritative job lifecycle finite-state machine, transactional application acceptance, authoritative Razorpay payment foundation (`createPaymentOrder`), timing-safe webhook HMAC-SHA256 verification (`handlePaymentWebhook`), and idempotent event deduplication (`webhook_events/{eventId}`) are fully implemented and verified.
-- **Pending Implementation:**
+- **Status:** Backend foundation, TypeScript build system, authorization helpers, structured logging, safe error handling, authoritative job lifecycle finite-state machine, transactional application acceptance, authoritative Razorpay payment foundation (`createPaymentOrder`), timing-safe webhook HMAC-SHA256 verification (`handlePaymentWebhook`), idempotent event deduplication (`webhook_events/{eventId}`), secure FCM device token management (`device_tokens` subcollection), multicast push notifications service, and chat message triggers are fully implemented and verified.
+- **Pending Implementation / Verification:**
   1. Live Razorpay merchant account credentials provisioned in production Google Cloud Secret Manager (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`).
   2. Live webhook URL registration in Razorpay Merchant Dashboard pointing to `/handlePaymentWebhook`.
-  3. FCM push notification trigger functions on Firestore subcollections.
+  3. Live FCM delivery on physical devices requires developer to test with active Google Play Services and real APNs/FCM device tokens (PARTIAL / ARCHITECTURE & CODE FULLY VERIFIED).

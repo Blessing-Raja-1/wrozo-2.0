@@ -3,6 +3,7 @@ import { db } from "../config/firebase";
 import { requireContractor, AuthContext } from "../auth/auth_helpers";
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from "../shared/errors";
 import { logger } from "../shared/logger";
+import { notificationService } from "../notifications/notification_service";
 import { JobRecord, JobStatus, CreateJobInput, TransitionJobStatusInput } from "../shared/types";
 
 /**
@@ -190,6 +191,38 @@ export const jobService = {
       previousStatus: currentStatus,
       newStatus: targetStatus,
     });
+
+    // Authoritative notification dispatch (non-blocking)
+    if (targetStatus === "COMPLETED") {
+      db.collection("applications")
+        .where("jobId", "==", input.jobId)
+        .where("status", "==", "ACCEPTED")
+        .get()
+        .then((snap) => {
+          const workerIds = snap.docs.map((d) => (d.data() as { workerId: string }).workerId);
+          return notificationService.notifyJobCompleted(workerIds, jobData.title, input.jobId);
+        })
+        .catch((err) => {
+          logger.warn("Failed to dispatch job completed notifications", {
+            action: "transitionJobStatus",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } else if (targetStatus === "CANCELLED") {
+      db.collection("applications")
+        .where("jobId", "==", input.jobId)
+        .get()
+        .then((snap) => {
+          const workerIds = snap.docs.map((d) => (d.data() as { workerId: string }).workerId);
+          return notificationService.notifyJobCancelled(workerIds, jobData.title, input.jobId);
+        })
+        .catch((err) => {
+          logger.warn("Failed to dispatch job cancelled notifications", {
+            action: "transitionJobStatus",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }
   },
 
   /**

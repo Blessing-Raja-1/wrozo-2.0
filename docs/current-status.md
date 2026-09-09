@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Authoritative Razorpay Payment Foundation Implemented (VERIFIED: 2026-09-09)
+- Secure Firebase Cloud Messaging (FCM) Push Notifications Implemented (VERIFIED: 2026-09-09)
 
 ## Current Objective
-- Provision live Razorpay merchant credentials and webhook endpoint in production Google Cloud Secret Manager (PLANNED / PARTIAL)
+- Provision live Razorpay merchant credentials in Secret Manager and verify live physical device push delivery (PLANNED / PARTIAL)
 
 ## Overall Status
-- Authoritative Razorpay Payment Foundation implemented in Firebase Cloud Functions with server-side order creation (`createPaymentOrder`), timing-safe cryptographic webhook HMAC-SHA256 verification (`handlePaymentWebhook`), idempotent replay protection (`webhook_events/{eventId}`), authoritative payment state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`, `CREATED`/`AUTHORIZED` -> `FAILED`, `CAPTURED` -> `REFUNDED`), and authoritative amount derivation from `job.wage * 100`. Client payment writes strictly blocked in Firestore rules. 67/67 backend unit tests pass across 22 suites (100%). 62/62 Firestore security rules emulator tests pass. 14/14 Flutter tests pass. 271 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
+- Secure FCM Push Notifications implemented across Firebase Cloud Functions and Flutter client. Features device token subcollection management (`users/{userId}/device_tokens/{tokenId}`), client token registration/unregistration callables, multi-device registration support, automatic pruning of invalid/stale registration tokens (`messaging/invalid-registration-token`, `messaging/registration-token-not-registered`), authoritative server-side triggers across Application events (`applyForJob`, `acceptApplication`, `rejectApplication`, `withdrawApplication`), Job events (`transitionJobStatus` for `COMPLETED` and `CANCELLED`), Payment events (`CAPTURED`, `FAILED`, `REFUNDED`), and Chat background trigger (`onChatMessageCreated`) with strict sender exclusion and recipient resolution from parent conversation. Flutter client integration includes `firebase_messaging: ^16.6.0`, background messaging handler (`firebaseMessagingBackgroundHandler`), token sync on startup & token refresh listener, Android notification channel (`wrozo_default_channel`), and `POST_NOTIFICATIONS` permission. Client payment writes remain strictly blocked in Firestore rules. 97/97 backend unit tests pass across 32 suites (100%). 69/69 Firestore security rules emulator tests pass across 7 groups (100%). 18/18 Flutter tests pass (100%). 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`). Live physical device push delivery marked as PARTIAL (requires physical devices with active APNs/FCM tokens) (VERIFIED)
 
 
 ## Completed
@@ -137,26 +137,48 @@
     - Updated `PaymentRepository` and `PaymentController` to initiate server-created orders; client checkout callbacks are advisory-only with zero client Firestore writes (SEC-02 preserved).
     - Updated `PaymentScreen` to support `captured` and `completed` statuses with safe string slicing.
   - Added 25 new backend unit tests in `payment_service.test.ts` (67/67 total backend unit tests passing across 22 suites).
+- **FCM-01 (Secure Firebase Cloud Messaging Push Notifications Foundation):**
+  - Implemented Device Token Subcollection Management in `functions/src/notifications/token_service.ts`:
+    - Stores tokens under `/users/{userId}/device_tokens/{tokenId}` with deterministic doc ID hashing.
+    - Owner-gated Firestore rules: `allow read, write: if isOwner(userId);` preventing cross-user token read/write/tampering.
+    - Supports multiple devices per user (phone, tablet).
+    - Auto-prunes invalid or stale tokens (`messaging/invalid-registration-token`, `messaging/registration-token-not-registered`) upon FCM multicast response.
+    - Exported callables `registerDeviceToken` and `unregisterDeviceToken` in `functions/src/index.ts`.
+  - Implemented Multicast Push Notification Gateway & Domain Service in `functions/src/notifications/notification_service.ts`:
+    - `FirebaseAdminMessagingGateway` (Admin SDK FCM) with `MockMessagingGateway` for deterministic unit testing.
+    - Domain notification triggers on Application events (`applyForJob`, `acceptApplication`, `rejectApplication`, `withdrawApplication`).
+    - Domain notification triggers on Job lifecycle events (`transitionJobStatus` for `COMPLETED`, `CANCELLED`).
+    - Domain notification triggers on Payment lifecycle transitions (`CAPTURED`, `FAILED`, `REFUNDED`).
+    - Background Firestore trigger `onChatMessageCreated` with recipient resolution from `conversations/{conversationId}` and strict sender exclusion.
+  - Added 30 new backend unit tests across `token_service.test.ts` and `notification_service.test.ts` (97/97 total backend unit tests passing across 32 suites).
+  - Added 7 new Firestore security rules tests in `test/security/rules.test.mjs` (Group G: SEC-FCM, 69/69 total emulator tests passing across 7 test groups).
+  - Implemented Flutter FCM Client Integration in `lib/core/notifications/notification_service.dart`:
+    - Background messaging top-level entry point `firebaseMessagingBackgroundHandler` with `@pragma('vm:entry-point')`.
+    - Foreground messaging presentation options (alert, badge, sound).
+    - Android notification channel `wrozo_default_channel` configuration.
+    - Added `POST_NOTIFICATIONS` permission in `android/app/src/main/AndroidManifest.xml`.
+    - Added 4 Flutter unit tests in `test/notifications/notification_service_test.dart` (18/18 Flutter tests passing).
 - Executed verification commands:
-  - `npm --prefix functions test`: 67/67 unit tests passed across 22 suites (VERIFIED)
+  - `npm --prefix functions test`: 97/97 unit tests passed across 32 suites (VERIFIED)
   - `npm --prefix functions run build`: TypeScript compiled with 0 errors (VERIFIED)
-  - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 62/62 passed (VERIFIED)
-  - `flutter test`: 14/14 passed (VERIFIED)
-  - `flutter analyze --no-pub`: 271 issues (baseline maintained, 0 new errors) (VERIFIED)
-  - `git diff --check`: clean (VERIFIED)
+  - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 69/69 passed across 7 test groups (VERIFIED)
+  - `flutter test`: 18/18 passed (VERIFIED)
+  - `flutter analyze --no-pub`: 272 issues (baseline maintained, 0 new errors) (VERIFIED)
+  - `git diff --check`: clean (0 whitespace errors) (VERIFIED)
   - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 84.1s (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
 
 ## Blocked / Partial
+- **FCM Live Physical Device Push Delivery:** Live physical device push delivery cannot be verified without real devices with Google Play Services and active APNs/FCM tokens. The entire server-side architecture, token management, Firestore rules, multicast gateway, and Flutter client handlers are fully implemented and verified with automated tests (PARTIAL / ARCHITECTURE & CODE FULLY VERIFIED)
 - **Razorpay Live Merchant Credentials & Webhook Configuration:** Live payment capture requires developer to provision real `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` in Google Cloud Secret Manager. The entire server-side architecture, order creation callable, webhook HTTPS endpoint, HMAC verification, and test gateway are fully implemented and verified with automated tests (PARTIAL / CREDENTIALS WIRED TO SECRET MANAGER)
 - Google Maps live map rendering requires developer to supply a real restricted Google Cloud Console Maps API key in untracked `android/local.properties`. Gradle manifest placeholder wiring is fully implemented and verified (PARTIAL / CONFIGURATION WIRED)
 
 ## Known Bugs
 - `test/widget_test.dart`: Fixed. References `WrozoApp`, compiles and passes (VERIFIED)
 - `ChatRepository.sendMessage` fails against Firestore rules: Fixed. Implemented two-phase creation, metadata-only updates, and hardened rules (VERIFIED)
-- Android runtime crash: `AndroidManifest.xml` permissions added (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) (VERIFIED)
+- Android runtime crash: `AndroidManifest.xml` permissions added (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `POST_NOTIFICATIONS`) (VERIFIED)
 - Android runtime crash: `AndroidManifest.xml` lacks Google Maps API key meta-data: Fixed. `com.google.android.geo.API_KEY` meta-data wired through Gradle manifestPlaceholders from untracked `local.properties` (VERIFIED)
 - Android build failure: Fixed. Google Services plugin and `google-services.json` aligned with `com.wrozo.wrozo`, debug APK built successfully (VERIFIED)
 - Unwired Navigation: Fixed. `HomeScreen` provides role-based navigation and GoRouter routes wired to `JobDiscoveryScreen`, `JobPostingScreen`, `ProfileSetupScreen`, and `ApplicantReviewScreen` (VERIFIED)
@@ -169,6 +191,7 @@
 - **FIXED:** Application Duplication Bypass: Firestore rules enforce composite document ID (`${jobId}_${workerId}`), client delete denied; dynamically tested in emulator (10/10 tests passed) (VERIFIED)
 - **FIXED / MITIGATED:** Review Forgery & Tampering: `/reviews/{reviewId}` enforces composite ID (`${jobId}_${reviewerId}`), forbids self-reviews (`reviewerId != revieweeId`), enforces rating bounds (1 to 5), immutable, client delete denied; dynamically tested in emulator (9/9 tests passed) (VERIFIED)
 - **FIXED (CHAT-01):** Unauthorized chat creation & spoofing — conversation creation strictly gated on server-verified `ACCEPTED` job application (`/applications/{applicationId}`); participants immutable; `senderId` must match caller UID; messages immutable and client delete denied; non-empty text bounds (1–5000 chars) enforced; dynamically tested in emulator (17/17 chat tests passed) (VERIFIED)
+- **FIXED (SEC-FCM):** Device Token Tampering & Cross-User Access Blocked — `/users/{userId}/device_tokens/{tokenId}` enforced with `isOwner(userId)`; unauthenticated and cross-user token reads, writes, and deletes denied; dynamically tested in emulator (7/7 tests passed in Group G) (VERIFIED)
 - **FIXED (SEC-AUDIT-01):** Secrets & Configuration Exposure Audit — Zero private keys, OAuth secrets, database passwords, or server-only credentials found across full codebase; `.gitignore` fortified with comprehensive ignore rules for `.env*`, keystores (`*.keystore`, `*.jks`, `key.properties`), certificates/keys (`*.pem`, `*.p12`, `*.pfx`, `*.key`, `*.crt`), and service accounts (`*service-account*.json`, `*credentials*.json`); standards documented in `docs/security/secrets-and-config.md` (VERIFIED)
 - **FIXED (MAPS-01):** Google Maps API Key Exposure Avoided — Key is injected from local-only untracked `local.properties` via Gradle manifest placeholder; never hardcoded in `AndroidManifest.xml` or Dart code (VERIFIED)
 - **FIXED (BACKEND-01):** Untrusted Client Vulnerability Neutralized — Firebase Cloud Functions foundation established in TypeScript on Node.js 20 LTS as the authoritative trusted server layer; zero client payment writes; Secret Manager bindings for payment secrets; strict role guards (VERIFIED)
@@ -178,12 +201,13 @@
 
 ## Testing Status
 - **Unit Coverage:** 100% of defined localization and rule unit tests passing (VERIFIED)
-- **Widget Coverage:** 100% of defined widget and navigation tests passing (14/14 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10]) (VERIFIED)
+- **Widget Coverage:** 100% of defined widget, navigation, and notification tests passing (18/18 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10] + `test/notifications/notification_service_test.dart` [4/4]) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
-- **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 62/62 tests passed across 6 test suites) (VERIFIED)
-- **Backend Coverage:** 100% of defined backend unit tests passing (67/67 tests passed across auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, and webhook cryptographic verification) (VERIFIED)
-- **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (62/62 passed) (VERIFIED)
+- **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 69/69 tests passed across 7 test suites) (VERIFIED)
+- **Backend Coverage:** 100% of defined backend unit tests passing (97/97 tests passed across auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, webhook cryptographic verification, device token management, notification dispatch, and chat recipient resolution) (VERIFIED)
+- **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (69/69 passed) (VERIFIED)
 - **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed). 100% of server-side payment logic verified via backend unit tests (25/25 payment tests passed) (VERIFIED)
+- **FCM Token Security Coverage:** 100% of device token subcollection security rules verified via Firebase Local Emulator suite (7/7 token tests passed) (VERIFIED)
 - **Chat Coverage:** 100% of chat security rules and lifecycle scenarios verified via Firebase Local Emulator suite (17/17 chat tests passed) (VERIFIED)
 - **Navigation Coverage:** 100% of role-based dashboard navigation paths tested and passing (3/3 tests passed) (VERIFIED)
 - **Localization Coverage:** 100% of supported locales (`en`, `hi`, `ta`, `te`, `mr`) and 40 key marketplace strings verified across unit and widget integration tests (10/10 tests passed) (VERIFIED)
@@ -192,8 +216,9 @@
 ## Architecture Decisions
 - **State Management:** Flutter Riverpod (`flutter_riverpod: ^2.4.9`) (VERIFIED)
 - **Routing:** GoRouter (`go_router: ^17.5.0`) (VERIFIED)
-- **Backend Services:** Firebase Core & Auth & Firestore (VERIFIED)
+- **Backend Services:** Firebase Core & Auth & Firestore & Messaging (VERIFIED)
 - **Backend Architecture:** Firebase Cloud Functions (Node.js 20 LTS, TypeScript 5, 2nd Gen API) as the authoritative trusted server layer; zero client payment writes; Secret Manager for payment secrets; strict role guards (VERIFIED)
+- **Push Notification Architecture:** Subcollection device token management (`/users/{userId}/device_tokens/{tokenId}`), client token registration/unregistration callables, multi-device support, auto-pruning dead tokens, server-side authoritative event dispatch only, and chat recipient derivation with sender exclusion (VERIFIED)
 - **Payment Architecture:** Server-side Razorpay order generation (`createPaymentOrder`), timing-safe cryptographic webhook HMAC-SHA256 signature verification (`handlePaymentWebhook`), idempotent replay protection (`webhook_events/{eventId}`), authoritative state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`, `CREATED`/`AUTHORIZED` -> `FAILED`, `CAPTURED` -> `REFUNDED`), and authoritative amount derivation (VERIFIED)
 - **Job Lifecycle Architecture:** Authoritative state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED`, `OPEN`/`IN_PROGRESS` -> `CANCELLED`); atomic transactional worker capacity enforcement; server-controlled `completedAt`/`cancelledAt` timestamps (VERIFIED)
 - **Location Services:** Geolocator + Geoflutterfire Plus (VERIFIED)
@@ -212,27 +237,29 @@
 ## Dependencies
 - Dart SDK constraint in `pubspec.yaml`: `^3.10.4` (Confuses Flutter SDK version with Dart SDK version) (VERIFIED)
 - Web incompatibility risk: `firebase_core_web: 3.11.0` and `web: 1.1.1` require modern Dart 3.4+ `dart:js_interop` (`isA<T>()`), conflicting with older toolchains (VERIFIED)
+- Messaging dependency: `firebase_messaging: ^16.6.0` (VERIFIED)
 - Missing dependencies: Razorpay SDK (`razorpay_flutter`) not in `pubspec.yaml` (VERIFIED)
 
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `feat: implement secure Razorpay payment foundation` (PENDING PUSH) (VERIFIED)
+- **Commit:** `feat: implement secure FCM notifications` (PENDING PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Implement production-oriented Razorpay payment foundation in Firebase Cloud Functions (order creation callable, cryptographic webhook HMAC verification, idempotent event deduplication, authoritative state machine, 67/67 backend tests passed, 62/62 emulator tests passed, 14/14 Flutter tests passed, debug APK verified) (VERIFIED)
+- Implement secure Firebase Cloud Messaging (FCM) push notifications across backend Cloud Functions and Flutter client (device token subcollection management, server-side authoritative notification triggers, sender exclusion in chat, automatic pruning of dead tokens, 97/97 backend tests passed, 69/69 emulator rules tests passed, 18/18 Flutter tests passed, debug APK verified) (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Configure production Google Cloud Secret Manager secrets (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`) with live merchant credentials (PLANNED)
+- Configure production Google Cloud Secret Manager secrets (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`) with live merchant credentials and verify live physical device push delivery (PLANNED)
 
 ## Important Notes
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
+- Secure FCM push notifications foundation is fully implemented across Cloud Functions and Flutter client with multi-device token subcollections, dead token auto-pruning, and server-side authoritative event triggers.
 - Payment foundation is fully implemented with authoritative server-side order generation, timing-safe cryptographic webhook HMAC verification, and replay protection. Client-side payment writes are permanently blocked in Firestore rules.
-- Firestore security rules are dynamically tested and verified against the Firebase Local Emulator with 62 automated unit tests passing across all security boundaries.
-- Backend unit test suite now contains 67 tests across 22 suites with 100% pass rate.
+- Firestore security rules are dynamically tested and verified against the Firebase Local Emulator with 69 automated unit tests passing across all 7 security boundaries.
+- Backend unit test suite contains 97 tests across 32 suites with 100% pass rate.
 - Role-based dashboard navigation is verified with 4/4 passing tests; workers and contractors have clean, segregated access to all feature screens.
 - Full 5-language localization foundation (`en`, `hi`, `ta`, `te`, `mr`) is active and verified; `AppLocalizations` delegates and supported locales are wired into `main.dart`.
 - Zero secrets or server credentials have ever been committed; `.gitignore` actively prevents future commits of `.env`, keystores, certificates, and service account JSONs.

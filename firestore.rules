@@ -41,6 +41,12 @@ service cloud.firestore {
             && isAllowedRole(request.resource.data.role)
           )
         );
+
+      match /device_tokens/{tokenId} {
+        // SEC-FCM: Only the authenticated owner can read, write, or delete their device tokens.
+        // Cross-user token modification, spoofing, and reading are strictly blocked.
+        allow read, write: if isOwner(userId);
+      }
     }
 
     match /worker_profiles/{userId} {

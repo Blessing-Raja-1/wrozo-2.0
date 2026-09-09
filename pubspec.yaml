@@ -48,6 +48,7 @@ dependencies:
   cloud_firestore: ^6.9.0
   firebase_analytics: ^12.5.0
   firebase_crashlytics: ^5.3.0
+  firebase_messaging: ^16.6.0
   pinput: ^6.0.2
   geoflutterfire_plus: ^0.0.34
 

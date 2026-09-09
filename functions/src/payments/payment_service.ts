@@ -28,6 +28,7 @@ import {
   HttpRazorpayGateway,
   verifyRazorpayWebhookSignature,
 } from "./razorpay_gateway";
+import { notificationService } from "../notifications/notification_service";
 
 /**
  * Authoritative Payment State Machine
@@ -485,6 +486,36 @@ class PaymentService {
 
     await batch.commit();
 
+    // Authoritative notification dispatch (non-blocking)
+    if (targetStatus === "CAPTURED") {
+      notificationService
+        .notifyPaymentCaptured(payment.workerId, payment.contractorId, payment.amount, payment.jobId)
+        .catch((err) => {
+          logger.warn("Failed to dispatch payment captured notifications", {
+            action: "processWebhookEvent",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } else if (targetStatus === "FAILED") {
+      notificationService
+        .notifyPaymentFailed(payment.contractorId, payment.amount, payment.jobId)
+        .catch((err) => {
+          logger.warn("Failed to dispatch payment failed notification", {
+            action: "processWebhookEvent",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } else if (targetStatus === "REFUNDED") {
+      notificationService
+        .notifyPaymentRefunded(payment.workerId, payment.contractorId, payment.amount, payment.jobId)
+        .catch((err) => {
+          logger.warn("Failed to dispatch payment refunded notification", {
+            action: "processWebhookEvent",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }
+
     logger.info("Payment status transitioned via webhook", {
       action: "processWebhookEvent",
       paymentId,
@@ -537,6 +568,36 @@ class PaymentService {
       ...(details?.razorpayPaymentId ? { razorpayPaymentId: details.razorpayPaymentId } : {}),
       ...(details?.reason ? { failureReason: details.reason } : {}),
     });
+
+    // Authoritative notification dispatch (non-blocking)
+    if (status === "CAPTURED" || status === "COMPLETED") {
+      notificationService
+        .notifyPaymentCaptured(currentData.workerId, currentData.contractorId, currentData.amount, currentData.jobId)
+        .catch((err) => {
+          logger.warn("Failed to dispatch payment captured notifications", {
+            action: "updatePaymentStatusServerOnly",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } else if (status === "FAILED") {
+      notificationService
+        .notifyPaymentFailed(currentData.contractorId, currentData.amount, currentData.jobId)
+        .catch((err) => {
+          logger.warn("Failed to dispatch payment failed notification", {
+            action: "updatePaymentStatusServerOnly",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } else if (status === "REFUNDED") {
+      notificationService
+        .notifyPaymentRefunded(currentData.workerId, currentData.contractorId, currentData.amount, currentData.jobId)
+        .catch((err) => {
+          logger.warn("Failed to dispatch payment refunded notification", {
+            action: "updatePaymentStatusServerOnly",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }
 
     logger.info("Server-side payment status updated", {
       action: "updatePaymentStatusServerOnly",

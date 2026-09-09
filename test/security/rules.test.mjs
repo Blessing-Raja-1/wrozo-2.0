@@ -828,3 +828,85 @@ describe('Group F: Chat Security', () => {
     }));
   });
 });
+
+describe('Group G: Device Token Security (SEC-FCM)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const fs = context.firestore();
+      await fs.collection('users').doc('user1').set({ phone: '+1234567890', status: 'ACTIVE', createdAt: new Date() });
+      await fs.collection('users').doc('user2').set({ phone: '+1234567891', status: 'ACTIVE', createdAt: new Date() });
+
+      // Seed an existing device token for user1
+      await fs.collection('users').doc('user1').collection('device_tokens').doc('token_device_1').set({
+        token: 'fcm_token_device_1',
+        platform: 'android',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+  });
+
+  test('G1: unauthenticated user cannot read or write device tokens', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(db.collection('users').doc('user1').collection('device_tokens').doc('token_device_1').get());
+    await assertFails(db.collection('users').doc('user1').collection('device_tokens').doc('token_anon').set({
+      token: 'fcm_token_anon',
+      platform: 'android',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('G2: authenticated user can read and register device token in own subcollection', async () => {
+    const dbUser1 = testEnv.authenticatedContext('user1').firestore();
+    await assertSucceeds(dbUser1.collection('users').doc('user1').collection('device_tokens').doc('token_device_1').get());
+    await assertSucceeds(dbUser1.collection('users').doc('user1').collection('device_tokens').doc('token_device_2').set({
+      token: 'fcm_token_device_2',
+      platform: 'android',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+  });
+
+  test('G3: user cannot read another users device tokens', async () => {
+    const dbUser2 = testEnv.authenticatedContext('user2').firestore();
+    await assertFails(dbUser2.collection('users').doc('user1').collection('device_tokens').doc('token_device_1').get());
+  });
+
+  test('G4: user cannot create or modify another users device tokens', async () => {
+    const dbUser2 = testEnv.authenticatedContext('user2').firestore();
+    // Tamper attempt on user1 token
+    await assertFails(dbUser2.collection('users').doc('user1').collection('device_tokens').doc('token_device_1').update({
+      token: 'fcm_token_hijacked',
+    }));
+    // Spoof attempt adding token to user1
+    await assertFails(dbUser2.collection('users').doc('user1').collection('device_tokens').doc('token_spoof').set({
+      token: 'fcm_token_attacker',
+      platform: 'android',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('G5: user cannot delete another users device tokens', async () => {
+    const dbUser2 = testEnv.authenticatedContext('user2').firestore();
+    await assertFails(dbUser2.collection('users').doc('user1').collection('device_tokens').doc('token_device_1').delete());
+  });
+
+  test('G6: user can delete their own device token', async () => {
+    const dbUser1 = testEnv.authenticatedContext('user1').firestore();
+    await assertSucceeds(dbUser1.collection('users').doc('user1').collection('device_tokens').doc('token_device_1').delete());
+  });
+
+  test('G7: user can register multiple device tokens under their own subcollection', async () => {
+    const dbUser1 = testEnv.authenticatedContext('user1').firestore();
+    await assertSucceeds(dbUser1.collection('users').doc('user1').collection('device_tokens').doc('phone_token').set({
+      token: 'phone_fcm_token',
+      platform: 'android',
+      createdAt: new Date(),
+    }));
+    await assertSucceeds(dbUser1.collection('users').doc('user1').collection('device_tokens').doc('tablet_token').set({
+      token: 'tablet_fcm_token',
+      platform: 'android',
+      createdAt: new Date(),
+    }));
+  });
+});

@@ -1,4 +1,5 @@
 import { onCall, onRequest, CallableRequest } from "firebase-functions/v2/https";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import {
   getBackendConfig,
   RAZORPAY_KEY_SECRET,
@@ -14,6 +15,8 @@ import { logger } from "./shared/logger";
 import { jobService } from "./jobs/job_service";
 import { applicationService } from "./applications/application_service";
 import { paymentService } from "./payments/payment_service";
+import { chatService } from "./chat/chat_service";
+import { tokenService } from "./notifications/token_service";
 import {
   CreateJobInput,
   TransitionJobStatusInput,
@@ -22,6 +25,8 @@ import {
   RejectApplicationInput,
   WithdrawApplicationInput,
   CreatePaymentOrderInput,
+  RegisterDeviceTokenInput,
+  UnregisterDeviceTokenInput,
 } from "./shared/types";
 
 // Export services and configuration for backend modularity
@@ -35,6 +40,8 @@ export * from "./users/user_service";
 export * from "./jobs/job_service";
 export * from "./applications/application_service";
 export * from "./chat/chat_service";
+export * from "./notifications/token_service";
+export * from "./notifications/notification_service";
 export * from "./payments/razorpay_gateway";
 export * from "./payments/payment_service";
 
@@ -222,5 +229,56 @@ export const handlePaymentWebhook = onRequest(
 
       res.status(500).send({ error: "Internal server error processing webhook." });
     }
+  }
+);
+
+/**
+ * Authoritative Device Token Registration Callable
+ */
+export const registerDeviceToken = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<RegisterDeviceTokenInput>) => {
+    try {
+      return await tokenService.registerToken(request, request.data);
+    } catch (error) {
+      throw handleFunctionError(error, "registerDeviceToken", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Device Token Unregistration Callable
+ */
+export const unregisterDeviceToken = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<UnregisterDeviceTokenInput>) => {
+    try {
+      return await tokenService.unregisterToken(request, request.data);
+    } catch (error) {
+      throw handleFunctionError(error, "unregisterDeviceToken", request.auth?.uid);
+    }
+  }
+);
+
+/**
+ * Authoritative Chat Message Creation Firestore Trigger
+ * Automatically dispatches FCM push notification to the conversation recipient.
+ */
+export const onChatMessageCreated = onDocumentCreated(
+  {
+    region: REGION,
+    document: "conversations/{conversationId}/messages/{messageId}",
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const conversationId = event.params.conversationId;
+    const data = snap.data();
+
+    await chatService.onChatMessageCreated(conversationId, {
+      senderId: data?.senderId,
+      text: data?.text,
+    });
   }
 );

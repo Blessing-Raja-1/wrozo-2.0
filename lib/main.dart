@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:wrozo/core/localization/l10n/app_localizations.dart';
+import 'package:wrozo/core/notifications/notification_service.dart';
 import 'package:wrozo/core/routing/app_router.dart';
 import 'package:wrozo/core/theme/app_theme.dart';
 import 'package:wrozo/firebase_options.dart';
@@ -12,6 +14,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   runApp(
     const ProviderScope(
       child: WrozoApp(),

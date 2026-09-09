@@ -3,6 +3,7 @@ import { db } from "../config/firebase";
 import { requireContractor, requireWorker, AuthContext } from "../auth/auth_helpers";
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from "../shared/errors";
 import { logger } from "../shared/logger";
+import { notificationService } from "../notifications/notification_service";
 import {
   ApplicationRecord,
   JobRecord,
@@ -73,6 +74,16 @@ export const applicationService = {
       applicationId,
       jobId,
     });
+
+    // Authoritative notification dispatch (non-blocking)
+    notificationService
+      .notifyNewApplication(jobData.contractorId, jobData.title, jobId)
+      .catch((err) => {
+        logger.warn("Failed to dispatch new application notification", {
+          action: "applyForJob",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
 
     return { applicationId };
   },
@@ -170,6 +181,9 @@ export const applicationService = {
         jobStatus: updatedJobStatus,
         acceptedCount: acceptedCount + 1,
         workerCountNeeded: jobData.workerCountNeeded,
+        workerId: appData.workerId,
+        jobTitle: jobData.title,
+        jobId: appData.jobId,
       };
     });
 
@@ -181,6 +195,16 @@ export const applicationService = {
       acceptedCount: result.acceptedCount,
       workerCountNeeded: result.workerCountNeeded,
     });
+
+    // Authoritative notification dispatch after successful transaction commit
+    notificationService
+      .notifyApplicationAccepted(result.workerId, result.jobTitle, result.jobId)
+      .catch((err) => {
+        logger.warn("Failed to dispatch application accepted notification", {
+          action: "acceptApplication",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
 
     return {
       applicationId: result.applicationId,
@@ -232,6 +256,25 @@ export const applicationService = {
       callerUid: contractorUid,
       applicationId,
     });
+
+    // Authoritative notification dispatch
+    db.collection("jobs")
+      .doc(appData.jobId)
+      .get()
+      .then((jobDoc) => {
+        const jobTitle = (jobDoc.data() as JobRecord | undefined)?.title || "Job";
+        return notificationService.notifyApplicationRejected(
+          appData.workerId,
+          jobTitle,
+          appData.jobId
+        );
+      })
+      .catch((err) => {
+        logger.warn("Failed to dispatch application rejected notification", {
+          action: "rejectApplication",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
   },
 
   /**
@@ -279,6 +322,25 @@ export const applicationService = {
       callerUid: workerUid,
       applicationId,
     });
+
+    // Authoritative notification dispatch
+    db.collection("jobs")
+      .doc(appData.jobId)
+      .get()
+      .then((jobDoc) => {
+        const jobTitle = (jobDoc.data() as JobRecord | undefined)?.title || "Job";
+        return notificationService.notifyApplicationWithdrawn(
+          appData.contractorId,
+          jobTitle,
+          appData.jobId
+        );
+      })
+      .catch((err) => {
+        logger.warn("Failed to dispatch application withdrawn notification", {
+          action: "withdrawApplication",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
   },
 
   /**
