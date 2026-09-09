@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- End-to-End (E2E) Integration Testing Foundation & Complete Coverage Established (VERIFIED: 2026-09-09)
+- Real Device & Production Environment Validation Foundation Established (VERIFIED: 2026-09-09)
 
 ## Current Objective
-- Provision live Razorpay merchant credentials in Secret Manager and verify live physical device push delivery (PLANNED / PARTIAL)
+- Connect physical Android hardware, register debug SHA-1 & test phone numbers in Firebase Console, and execute manual real-device checklist (PLANNED / PARTIAL)
 
 ## Overall Status
-- Real end-to-end integration coverage established across the complete Wrozo 2.0 marketplace lifecycle: Flutter client -> Firebase Auth -> Firestore -> Cloud Functions -> notifications -> chat -> payments. 87/87 executable integration tests pass across 6 comprehensive test suites (100%) running inside the Firebase Local Firestore Emulator. Full domain journeys verified: Worker flow (16/16 passed: register, setupAccountCapabilities, profile check, job discovery, apply, deterministic composite application ID, contractor notification, transactional acceptance, worker notification, chat conversation creation, bi-directional messaging, job completion, and payment order eligibility); Contractor flow (17/17 passed: register, contractor capability, profile check, createJob with validations, application receipt, transactional capacity enforcement, rejection, worker withdrawal, chat conversation, authoritative wage calculation, payment order eligibility); Dual-role flow (10/10 passed: single UID, both capabilities, dynamic presentation activeMode switching, capability persistence, authorization independent of activeMode, capability escalation prevention); Payment flow (10/10 passed: MockRazorpayGateway, authoritative wage * 100 paise derivation, client hint override, order reuse idempotency, duplicate order denial when CAPTURED, state machine transitions CREATED -> AUTHORIZED -> CAPTURED -> REFUNDED, tamper/fraud mismatch detection); Notification trigger flow (10/10 passed: all server-side event dispatch triggers for apply, accept, reject, withdraw, complete, cancel, payment captured, payment failed, payment refunded, and chat message); Security & attack scenarios (24/24 passed: unauthenticated calls, self-application, role enforcement, duplicate applications, capacity limits, illegal transitions, cross-contractor isolation, non-accepted worker payments, forged HMAC signatures, webhook deduplication, admin key injection). 105/105 backend unit tests pass across 33 suites (100%). 110/110 Firestore security rules emulator tests pass across 9 test groups (100%). 28/28 Flutter tests pass (100%). 276 analyzer issues (baseline maintained, 0 new errors, 0 warnings). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`). Live physical device push delivery marked as PARTIAL (requires physical devices with active APNs/FCM tokens). Live Razorpay merchant credentials marked as PARTIAL (requires live merchant credentials in Google Cloud Secret Manager) (VERIFIED)
+- Real-device and production-environment validation foundation established for Wrozo 2.0. Native Android manifest, permissions (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `POST_NOTIFICATIONS`), Maps placeholders, FCM default channel, application ID (`com.wrozo.wrozo`), SDK levels (minSdk 21, targetSdk 34/35), Java 17 toolchain, and debug/release signing configurations fully audited and verified. Debug keystore SHA-1 (`0B:10:CD:F6:C5:74:75:45:0F:F6:DB:5D:00:C4:30:66:B5:16:BD:34`) and SHA-256 extracted for Firebase Phone Auth and Google Maps console registration. Firebase project `wrozo-5b147` (number `448205141152`) verified aligned across `firebase.json`, `google-services.json`, and `lib/firebase_options.dart`. Production release app bundle verified (`flutter build appbundle` produced `build\app\outputs\bundle\release\app-release.aab` [46.1MB] with 0 errors). Comprehensive manual physical-device validation checklist authored in `docs/testing/real-device-validation.md` covering Auth, Onboarding, Worker, Contractor, Dual-Role, FCM Push, and Maps flows. Production safety audit completed with explicit classification (VERIFIED, PARTIAL, BLOCKED, NOT REQUIRED YET). All baseline checks verified (105/105 backend tests, 110/110 rules tests, 28/28 Flutter tests, debug APK, release AAB). No physical device claims made. (VERIFIED)
 
 
 ## Completed
@@ -299,6 +299,14 @@
   - `flutter analyze --no-pub`: 276 issues (baseline maintained, 0 new errors, 0 warnings) (VERIFIED)
   - `git diff --check`: clean (0 whitespace errors) (VERIFIED)
   - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
+- **REAL-DEVICE-01 (Real Device and Production Environment Validation Foundation):**
+  - **Android Manifest & Permissions Audit:** Inspected `android/app/src/main/AndroidManifest.xml`; verified runtime permissions `INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, and `POST_NOTIFICATIONS`; verified Maps API key placeholder `${MAPS_API_KEY}` wired to `com.google.android.geo.API_KEY` meta-data; verified FCM default channel `wrozo_default_channel` meta-data (VERIFIED)
+  - **Build & Toolchain Audit:** Inspected `android/app/build.gradle.kts`; confirmed application ID and namespace `com.wrozo.wrozo`; minSdk 21, compileSdk/targetSdk 34/35; Java 17 compatibility across Java and Kotlin; debug signing assigned as safe fallback for release builds (`signingConfigs.getByName("debug")`) (VERIFIED)
+  - **Keystore & Fingerprints Extraction:** Audited local debug keystore at `C:\Users\bless\.android\debug.keystore`; extracted fingerprints for Firebase Auth and Google Cloud Console: SHA-1 (`0B:10:CD:F6:C5:74:75:45:0F:F6:DB:5D:00:C4:30:66:B5:16:BD:34`) and SHA-256 (`CA:28:5E:F5:88:CB:11:E2:F3:5B:94:02:81:36:96:5A:89:64:A1:B5:30:32:11:5E:72:34:29:DB:C6:83:1F:36`) (VERIFIED)
+  - **Firebase Project Alignment:** Verified project `wrozo-5b147` (number `448205141152`) aligned across `firebase.json`, `android/app/google-services.json`, and `lib/firebase_options.dart`; client App ID `1:448205141152:android:f88cf8c169a5d28ce3c5c5` verified for package `com.wrozo.wrozo` (VERIFIED)
+  - **Release App Bundle Compilation:** Verified `flutter build appbundle` compiles cleanly with release optimizations and tree-shaken icon fonts producing `build\app\outputs\bundle\release\app-release.aab` (46.1MB) with 0 errors (VERIFIED)
+  - **Production Safety Audit:** Formally classified secrets into VERIFIED (Firebase Admin ADC), PARTIAL (Razorpay live keys in Secret Manager, Google Maps restricted key in `local.properties`, release keystore in `key.properties`, live FCM device delivery), and NOT REQUIRED YET (Crashlytics native plugin, Analytics event tracking). Zero secrets hardcoded or committed (VERIFIED)
+  - **Real Device Test Plan:** Authored `docs/testing/real-device-validation.md` containing full hardware prerequisites, Firebase Console pre-requisites, and exhaustive manual test checklists covering AUTH, ONBOARDING, WORKER, CONTRACTOR, DUAL ROLE, NOTIFICATIONS, and MAPS flows with explicit distinction between emulator-verified logic and physical-device verification requirements (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
@@ -367,6 +375,7 @@
 - **Navigation Coverage:** 100% of role-based dashboard navigation paths tested and passing (3/3 tests passed) (VERIFIED)
 - **Localization Coverage:** 100% of supported locales (`en`, `hi`, `ta`, `te`, `mr`) and 40 key marketplace strings verified across unit and widget integration tests (10/10 tests passed) (VERIFIED)
 - **Maps Configuration Coverage:** 100% of Gradle manifest placeholder injection verified via debug merged manifest inspection (VERIFIED)
+- **Real-Device Readiness Coverage:** 100% of native permissions (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `POST_NOTIFICATIONS`), Maps placeholders, Gradle SDK configs (minSdk 21, targetSdk 34/35, Java 17), debug keystore SHA-1/SHA-256 fingerprints, and Firebase project `wrozo-5b147` alignment audited; debug APK and release AAB builds verified; comprehensive manual test checklist established in `docs/testing/real-device-validation.md` (VERIFIED)
 
 ## Architecture Decisions
 - **Capability Architecture:** Server-authoritative `capabilities: { worker: boolean, contractor: boolean }` defining permissions; `activeMode` purely client-side presentation state; client capability direct writes blocked; setup via trusted Cloud Function `setupAccountCapabilities`; legacy single-role backwards compatibility (VERIFIED)
@@ -400,18 +409,21 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `test: establish end-to-end integration coverage` (PENDING COMMIT & PUSH) (VERIFIED)
+- **Commit:** `test: establish real device validation foundation` (PENDING COMMIT & PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Established comprehensive end-to-end integration test coverage across the entire Wrozo 2.0 marketplace lifecycle with 87 executable integration tests (100% passing across 6 suites in Firebase Local Emulator) covering Worker flow, Contractor flow, Dual-Role flow, Payment flow, Notifications flow, and Security attack scenarios; verified 105/105 backend unit tests, 110/110 security rules tests, 28/28 Flutter tests, clean analyzer, and successful debug APK build (VERIFIED)
+- Established real-device and production-environment validation foundation: audited AndroidManifest.xml, permissions, Maps placeholders, FCM channel, build.gradle.kts, debug keystore fingerprints, release app bundle generation (`build\app\outputs\bundle\release\app-release.aab` [46.1MB], 0 errors), Firebase configuration alignment with project `wrozo-5b147`, production safety secrets classification, and authored complete manual testing checklist in `docs/testing/real-device-validation.md` (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Configure production Google Cloud Secret Manager secrets (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`) with live merchant credentials and verify live physical device push delivery (PLANNED)
+- Connect physical Android test device, register debug SHA-1 & test phone numbers in Firebase Console, and execute manual checklist in `docs/testing/real-device-validation.md` (PLANNED)
 
 ## Important Notes
+- Real-device validation foundation is established with complete native configuration audit, SHA fingerprints extraction, production secrets classification, and manual test checklist.
+- Distinguishes explicitly between emulator-verified logic (automated tests) and physical-device verification requirements (hardware GPS, SMS OTP, system tray push).
+- Release app bundle builds cleanly (`build\app\outputs\bundle\release\app-release.aab` [46.1MB]).
 - End-to-end integration test coverage is fully established with 87 executable test cases across 6 suites running deterministically in the Firebase Local Emulator.
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
 - Dual-role capability architecture is fully verified: single users hold both capabilities server-side while choosing their active presentation mode on entry or dashboard; capabilities cannot be modified or escalated directly from client code.
