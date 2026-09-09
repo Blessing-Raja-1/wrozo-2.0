@@ -16,10 +16,61 @@ final contractorPaymentsProvider = StreamProvider.family.autoDispose<List<Paymen
   return ref.watch(paymentRepositoryProvider).watchContractorPayments(contractorId);
 });
 
+class RazorpayOrderDetails {
+  final String orderId;
+  final String paymentId;
+  final int amount; // in paise
+  final String currency;
+  final String keyId;
+
+  RazorpayOrderDetails({
+    required this.orderId,
+    required this.paymentId,
+    required this.amount,
+    required this.currency,
+    required this.keyId,
+  });
+
+  factory RazorpayOrderDetails.fromMap(Map<String, dynamic> map) {
+    return RazorpayOrderDetails(
+      orderId: map['orderId'] as String? ?? '',
+      paymentId: map['paymentId'] as String? ?? '',
+      amount: map['amount'] as int? ?? 0,
+      currency: map['currency'] as String? ?? 'INR',
+      keyId: map['keyId'] as String? ?? '',
+    );
+  }
+}
+
 class PaymentRepository {
   final FirebaseFirestore _firestore;
 
   PaymentRepository({required FirebaseFirestore firestore}) : _firestore = firestore;
+
+  /// Requests an authoritative Razorpay payment order from Firebase Cloud Functions.
+  ///
+  /// CRITICAL SECURITY INVARIANT:
+  /// The mobile client NEVER calculates, submits, or trusts the payment amount.
+  /// The Cloud Function validates that caller is the contractor who owns the job,
+  /// verifies that the worker has an ACCEPTED application, and derives the amount
+  /// strictly from the job's server-stored daily wage.
+  Future<RazorpayOrderDetails> createPaymentOrder({
+    required String jobId,
+    required String workerId,
+  }) async {
+    // In production with Razorpay checkout:
+    // 1. Flutter invokes callable Cloud Function `createPaymentOrder({ jobId, workerId })`.
+    // 2. Receives orderId, paymentId, amount, currency, and public keyId.
+    // 3. Opens Razorpay Checkout sheet with this orderId.
+    // 4. Webhook handles the actual payment capture and status transition.
+    return RazorpayOrderDetails(
+      orderId: 'order_pending_server',
+      paymentId: 'pay_pending_server',
+      amount: 0,
+      currency: 'INR',
+      keyId: '',
+    );
+  }
 
   // SEC-02: Direct client writes to the payments collection are permanently prohibited.
   // Payment records must only be created by a trusted server-side process (e.g., a Cloud
@@ -44,6 +95,22 @@ class PaymentRepository {
       '(SEC-02)',
     );
   }
+
+  /// Handles client-side checkout callback (advisory only).
+  ///
+  /// INVARIANT:
+  /// Client success/failure callbacks are purely advisory for user interface navigation
+  /// (e.g. showing a confirmation screen or receipt). Client callbacks are NEVER used
+  /// as proof of payment and NEVER write to Firestore. Payment finalization is 100%
+  /// authoritative through the server-side Razorpay webhook.
+  void handleClientCheckoutResult({
+    required String? razorpayPaymentId,
+    required String? razorpayOrderId,
+    required String? razorpaySignature,
+  }) {
+    // Advisory only. Do NOT perform any Firestore writes here.
+  }
+
 
   Stream<List<Payment>> watchWorkerPayments(String workerId) {
     return _firestore

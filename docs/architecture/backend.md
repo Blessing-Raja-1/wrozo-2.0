@@ -274,43 +274,80 @@ Executed inside an atomic Firestore transaction (`db.runTransaction`):
 
 ---
 
-## 6. Future Payment & Webhook Architecture (Razorpay Blueprint)
+## 6. Authoritative Payment & Webhook Architecture (Razorpay Foundation)
 
 ```
 [Contractor App]             [Cloud Functions]               [Razorpay API]
        │                             │                              │
-       │ 1. Request Payment Order    │                              │
+       │ 1. createPaymentOrder()     │                              │
        ├────────────────────────────►│                              │
-       │ (jobId, workerId, amount)   │ 2. Validate Ownership & Job  │
+       │ (jobId, workerId)           │ 2. Authoritative Amount      │
+       │                             │    Derivation (wage * 100)   │
+       │                             │ 3. Check Accepted App & State│
        │                             ├─────────────────────────────►│
        │                             │    POST /v1/orders           │
        │                             │◄─────────────────────────────┤
-       │                             │ 3. Create Firestore Payment  │
-       │                             │    (status: PENDING)         │
-       │ 4. Return Order Details     │                              │
+       │                             │ 4. Create Firestore Payment  │
+       │                             │    (status: CREATED)         │
+       │ 5. Return Order Details     │                              │
        │◄────────────────────────────┤                              │
+       │ (orderId, amount, keyId)    │                              │
        │                             │                              │
-       │ 5. Open Razorpay Checkout   │                              │
+       │ 6. Open Razorpay Checkout   │                              │
        │    Sheet & Complete Pay     │                              │
        │                             │                              │
-       │                             │ 6. Webhook Notification      │
-       │                             │    payment.captured          │
+       │                             │ 7. Webhook Notification      │
+       │                             │    payment.captured / etc.   │
        │                             │◄─────────────────────────────┤
-       │                             │ 7. Cryptographic HMAC Check  │
+       │                             │ 8. Timing-Safe HMAC Check    │
        │                             │    (RAZORPAY_WEBHOOK_SECRET) │
-       │                             │ 8. Update Firestore Payment  │
-       │                             │    (status: COMPLETED)       │
-       │                             │ 9. Authoritative Job Update  │
+       │                             │ 9. Deduplicate via eventId   │
+       │                             │    (/webhook_events/{id})    │
+       │                             │ 10. Check State Machine      │
+       │                             │ 11. Update Firestore Payment │
+       │                             │    (status: CAPTURED)        │
        │                             │                              │
 ```
 
-1. **Order Creation:** Contractor invokes callable `createPaymentOrder`. Server validates job ownership, invokes Razorpay Orders API, and writes a `PENDING` record in `/payments/{paymentId}` using Admin SDK.
-2. **Client Checkout:** Mobile app receives `order_id` and presents the Razorpay native SDK checkout sheet.
-3. **Webhook Verification (Crucial):**
-   - The payment gateway sends an HTTPS POST event (`payment.captured` or `payment.failed`) to `/handlePaymentWebhook`.
-   - The Cloud Function computes the HMAC-SHA256 digest of the raw request payload using `RAZORPAY_WEBHOOK_SECRET`.
-   - If and only if the computed signature matches the `x-razorpay-signature` header, the payment status in Firestore is transitioned to `COMPLETED`.
-   - Client claims are NEVER used to mark a payment completed.
+### 1. Server-Side Order Creation (`createPaymentOrder`)
+- Contractor invokes callable Cloud Function `createPaymentOrder({ jobId, workerId })`.
+- **Authoritative Amount:** Client amounts are ignored; the server derives `amountInPaise = Math.round(job.wage * 100)` from the verified job document.
+- **Preconditions:** Caller must own the job; job status must be `IN_PROGRESS` or `COMPLETED`; worker must have an `ACCEPTED` application (`applications/${jobId}_${workerId}`).
+- **Idempotency:** Rejects duplicate payment attempts for `CAPTURED` jobs; reuses existing active order if in `CREATED` status.
+- **Secrets Isolation:** Key secret resides strictly in Google Cloud Secret Manager; only public `keyId` is sent to the client.
+
+### 2. Authoritative Payment State Machine
+```
+               ┌───────────────┐
+               │    CREATED    │
+               └──┬────┬─────┬─┘
+                  │    │     │
+                  │    │     └──────────────┐
+                  ▼    ▼                    ▼
+     ┌───────────────┐ ┌───────────────┐ ┌──────────────┐
+     │  AUTHORIZED   │ │   CAPTURED    │ │    FAILED    │ (Terminal)
+     └──┬────────────┘ └───────┬───────┘ └──────────────┘
+        │      ▲               │
+        │      │               │ Contractor/Admin
+        │      │               │ Refunds
+        ▼      │               ▼
+ ┌─────────────┴─┐     ┌───────────────┐
+ │    FAILED     │     │   REFUNDED    │ (Terminal)
+ └───────────────┘     └───────────────┘
+    (Terminal)
+```
+- **Valid Transitions:**
+  - `CREATED` $\rightarrow$ `AUTHORIZED`, `CREATED` $\rightarrow$ `CAPTURED`, `CREATED` $\rightarrow$ `FAILED`
+  - `AUTHORIZED` $\rightarrow$ `CAPTURED`, `AUTHORIZED` $\rightarrow$ `FAILED`
+  - `CAPTURED` $\rightarrow$ `REFUNDED`
+- **Illegal Transitions Blocked:** `CAPTURED` cannot become `FAILED`; `FAILED` cannot become `CAPTURED`; `REFUNDED` cannot transition to any status.
+
+### 3. Webhook Handling & Cryptographic Verification (`handlePaymentWebhook`)
+- Gateway posts HTTPS event payload to `/handlePaymentWebhook`.
+- **HMAC-SHA256 Timing-Safe Verification:** Computes HMAC digest with `RAZORPAY_WEBHOOK_SECRET` and compares with `x-razorpay-signature` header using `crypto.timingSafeEqual` to neutralize timing side-channel attacks.
+- **Replay & Duplicate Protection:** Deduplicates event deliveries against `/webhook_events/{eventId}`. Redeliveries return 200 `{ status: "ignored", reason: "duplicate_event" }`.
+- **Tampering Detection:** Validates consistency of `order_id`, `amount`, and `jobId`/`workerId` metadata against the stored Firestore payment record.
+
 
 ---
 
@@ -355,8 +392,8 @@ Executed inside an atomic Firestore transaction (`db.runTransaction`):
 
 ## 10. Current Limitations & Roadmap
 
-- **Status:** Backend foundation, TypeScript build system, authorization helpers, structured logging, safe error handling, authoritative job lifecycle finite-state machine, transactional application acceptance, and architecture blueprint are fully implemented and verified.
+- **Status:** Backend foundation, TypeScript build system, authorization helpers, structured logging, safe error handling, authoritative job lifecycle finite-state machine, transactional application acceptance, authoritative Razorpay payment foundation (`createPaymentOrder`), timing-safe webhook HMAC-SHA256 verification (`handlePaymentWebhook`), and idempotent event deduplication (`webhook_events/{eventId}`) are fully implemented and verified.
 - **Pending Implementation:**
-  1. Live Razorpay merchant account configuration in Google Cloud Secret Manager.
-  2. Full webhook HTTPS endpoint implementation and transaction handlers.
+  1. Live Razorpay merchant account credentials provisioned in production Google Cloud Secret Manager (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`).
+  2. Live webhook URL registration in Razorpay Merchant Dashboard pointing to `/handlePaymentWebhook`.
   3. FCM push notification trigger functions on Firestore subcollections.

@@ -66,3 +66,27 @@ export function getBackendConfig(): BackendConfig {
     isProduction: env === "production",
   };
 }
+
+export function getRazorpayKeyId(): string {
+  try {
+    return process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID.value() || "";
+  } catch {
+    return process.env.RAZORPAY_KEY_ID || "";
+  }
+}
+
+export function getRazorpayKeySecret(): string {
+  try {
+    return process.env.RAZORPAY_KEY_SECRET || RAZORPAY_KEY_SECRET.value() || "";
+  } catch {
+    return process.env.RAZORPAY_KEY_SECRET || "";
+  }
+}
+
+export function getRazorpayWebhookSecret(): string {
+  try {
+    return process.env.RAZORPAY_WEBHOOK_SECRET || RAZORPAY_WEBHOOK_SECRET.value() || "";
+  } catch {
+    return process.env.RAZORPAY_WEBHOOK_SECRET || "";
+  }
+}

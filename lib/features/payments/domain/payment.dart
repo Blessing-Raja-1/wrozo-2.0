@@ -1,6 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum PaymentStatus { pending, completed, failed }
+enum PaymentStatus {
+  created,
+  authorized,
+  captured,
+  failed,
+  refunded,
+  pending,
+  completed,
+}
 
 class Payment {
   final String id;
@@ -11,6 +19,8 @@ class Payment {
   final PaymentStatus status;
   final DateTime? createdAt;
   final DateTime? completedAt;
+  final String? razorpayOrderId;
+  final String? razorpayPaymentId;
 
   Payment({
     required this.id,
@@ -18,19 +28,29 @@ class Payment {
     required this.workerId,
     required this.contractorId,
     required this.amount,
-    this.status = PaymentStatus.pending,
+    this.status = PaymentStatus.created,
     this.createdAt,
     this.completedAt,
+    this.razorpayOrderId,
+    this.razorpayPaymentId,
   });
 
   factory Payment.fromMap(String id, Map<String, dynamic> data) {
     PaymentStatus parseStatus(String? val) {
       switch (val) {
-        case 'COMPLETED': return PaymentStatus.completed;
-        case 'FAILED': return PaymentStatus.failed;
+        case 'CAPTURED':
+        case 'COMPLETED':
+          return PaymentStatus.captured;
+        case 'AUTHORIZED':
+          return PaymentStatus.authorized;
+        case 'FAILED':
+          return PaymentStatus.failed;
+        case 'REFUNDED':
+          return PaymentStatus.refunded;
+        case 'CREATED':
         case 'PENDING':
         default:
-          return PaymentStatus.pending;
+          return PaymentStatus.created;
       }
     }
 
@@ -43,15 +63,26 @@ class Payment {
       status: parseStatus(data['status'] as String?),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       completedAt: (data['completedAt'] as Timestamp?)?.toDate(),
+      razorpayOrderId: data['razorpayOrderId'] as String?,
+      razorpayPaymentId: data['razorpayPaymentId'] as String?,
     );
   }
 
   Map<String, dynamic> toMap() {
     String formatStatus() {
       switch (status) {
-        case PaymentStatus.completed: return 'COMPLETED';
-        case PaymentStatus.failed: return 'FAILED';
-        case PaymentStatus.pending: return 'PENDING';
+        case PaymentStatus.captured:
+        case PaymentStatus.completed:
+          return 'CAPTURED';
+        case PaymentStatus.authorized:
+          return 'AUTHORIZED';
+        case PaymentStatus.failed:
+          return 'FAILED';
+        case PaymentStatus.refunded:
+          return 'REFUNDED';
+        case PaymentStatus.created:
+        case PaymentStatus.pending:
+          return 'CREATED';
       }
     }
 
@@ -63,6 +94,8 @@ class Payment {
       'status': formatStatus(),
       'createdAt': createdAt == null ? FieldValue.serverTimestamp() : Timestamp.fromDate(createdAt!),
       if (completedAt != null) 'completedAt': Timestamp.fromDate(completedAt!),
+      if (razorpayOrderId != null) 'razorpayOrderId': razorpayOrderId,
+      if (razorpayPaymentId != null) 'razorpayPaymentId': razorpayPaymentId,
     };
   }
 }

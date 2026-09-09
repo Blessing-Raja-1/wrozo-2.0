@@ -9,7 +9,15 @@ export type UserStatus = "ACTIVE" | "SUSPENDED";
 
 export type JobStatus = "OPEN" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type ApplicationStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "WITHDRAWN";
-export type PaymentStatus = "PENDING" | "COMPLETED" | "FAILED";
+export type PaymentStatus =
+  | "CREATED"
+  | "AUTHORIZED"
+  | "CAPTURED"
+  | "FAILED"
+  | "REFUNDED"
+  | "PENDING"
+  | "COMPLETED";
+
 
 export interface AppUserRecord {
   phone: string;
@@ -113,18 +121,50 @@ export interface MessageRecord {
   isRead: boolean;
 }
 
+export interface CreatePaymentOrderInput {
+  jobId: string;
+  workerId: string;
+  amountInPaise?: number; // Client hint, never trusted; server derives authoritative amount from job wage
+}
+
+export interface PaymentOrderResult {
+  orderId: string;
+  paymentId: string;
+  amount: number; // in paise
+  currency: string;
+  keyId: string;
+}
+
 export interface PaymentRecord {
   jobId: string;
   workerId: string;
   contractorId: string;
-  amount: number;
+  amount: number; // in paise
+  currency: string;
   status: PaymentStatus;
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
+  authorizedAt?: Timestamp;
+  capturedAt?: Timestamp;
   completedAt?: Timestamp;
+  failedAt?: Timestamp;
+  refundedAt?: Timestamp;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   razorpaySignature?: string;
+  failureReason?: string;
 }
+
+export interface WebhookEventRecord {
+  eventId: string;
+  eventType: string;
+  orderId?: string;
+  paymentId?: string;
+  processedAt: Timestamp;
+  status: "PROCESSED" | "IGNORED";
+  reason?: string;
+}
+
 
 export interface ReviewRecord {
   jobId: string;

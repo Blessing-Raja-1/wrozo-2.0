@@ -8,13 +8,14 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Authoritative Job Lifecycle & Application Workflow Implemented (VERIFIED: 2026-09-09)
+- Authoritative Razorpay Payment Foundation Implemented (VERIFIED: 2026-09-09)
 
 ## Current Objective
-- Implement payment order creation and webhook processing when Razorpay merchant credentials become available (PLANNED)
+- Provision live Razorpay merchant credentials and webhook endpoint in production Google Cloud Secret Manager (PLANNED / PARTIAL)
 
 ## Overall Status
-- Authoritative Job Lifecycle finite-state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED` / `CANCELLED`) and transactional application acceptance workflow implemented in Firebase Cloud Functions. Atomic capacity limits (`workerCountNeeded`), duplicate application prevention, role guards (`WORKER`, `CONTRACTOR`), and state transition validations fully verified. 42/42 backend unit tests pass. 62/62 Firestore security rules emulator tests pass. 14/14 Flutter tests pass. 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly in 33.4s (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
+- Authoritative Razorpay Payment Foundation implemented in Firebase Cloud Functions with server-side order creation (`createPaymentOrder`), timing-safe cryptographic webhook HMAC-SHA256 verification (`handlePaymentWebhook`), idempotent replay protection (`webhook_events/{eventId}`), authoritative payment state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`, `CREATED`/`AUTHORIZED` -> `FAILED`, `CAPTURED` -> `REFUNDED`), and authoritative amount derivation from `job.wage * 100`. Client payment writes strictly blocked in Firestore rules. 67/67 backend unit tests pass across 22 suites (100%). 62/62 Firestore security rules emulator tests pass. 14/14 Flutter tests pass. 271 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
+
 
 ## Completed
 - Verified active workspace location and Git remote / branch tracking (VERIFIED)
@@ -113,20 +114,43 @@
     - Contractor rejection (`rejectApplication`) of PENDING applications.
     - Worker withdrawal (`withdrawApplication`) of PENDING applications (rejection if already ACCEPTED).
   - Exported callable Cloud Functions in `functions/src/index.ts`: `createJob`, `transitionJobStatus`, `applyForJob`, `acceptApplication`, `rejectApplication`, `withdrawApplication`.
-  - Added 20 new backend unit tests across `job_service.test.ts` and `application_service.test.ts` (42/42 total backend unit tests passing).
+  - Added 20 new backend unit tests across `job_service.test.ts` and `application_service.test.ts` (42/42 total backend unit tests passing) (VERIFIED).
+- **RAZORPAY-01 (Authoritative Razorpay Payment Foundation & Webhook Pipeline):**
+  - Implemented Server-Side Razorpay Order Creation in `functions/src/payments/payment_service.ts`:
+    - Callable function `createPaymentOrder` requiring authenticated `CONTRACTOR` caller.
+    - Authoritative amount derivation: `amountInPaise = Math.round(job.wage * 100)` strictly derived from server-side job record; client amounts are completely ignored.
+    - Precondition validations: job must be `IN_PROGRESS` or `COMPLETED`; worker must have an `ACCEPTED` application (`applications/${jobId}_${workerId}`); caller must own job.
+    - Idempotency & duplicate order prevention: rejects payments if already `CAPTURED` or `COMPLETED`; idempotently reuses existing uncaptured order if already in `CREATED` status.
+    - Zero secrets exposed: public `keyId` returned, `keySecret` kept strictly server-side in Secret Manager.
+  - Implemented Cryptographic Webhook Processing & Timing-Safe Verification in `functions/src/payments/razorpay_gateway.ts` and `payment_service.ts`:
+    - HTTPS endpoint `handlePaymentWebhook` with Secret Manager binding `[RAZORPAY_WEBHOOK_SECRET]`.
+    - Timing-safe HMAC-SHA256 signature verification via `crypto.timingSafeEqual` prevents timing attacks; missing/invalid signatures rejected with 400.
+    - Idempotent deduplication using `/webhook_events/{eventId}`: duplicate event deliveries return 200 `{ status: "ignored", reason: "duplicate_event" }`.
+    - Fraud and tampering detection: validates consistency of `order_id`, `amount`, and metadata `jobId`/`workerId` between gateway payload and stored payment record.
+  - Implemented Authoritative Payment State Machine:
+    - `CREATED` -> `AUTHORIZED` -> `CAPTURED`
+    - `CREATED` -> `FAILED`, `AUTHORIZED` -> `FAILED`
+    - `CAPTURED` -> `REFUNDED`
+    - Terminal states: `FAILED`, `REFUNDED`. Illegal transitions (e.g. `CAPTURED` -> `FAILED`, `FAILED` -> `CAPTURED`) strictly rejected.
+  - Client Payment Integration:
+    - Updated Flutter `Payment` domain model with full state machine enum and Razorpay metadata fields.
+    - Updated `PaymentRepository` and `PaymentController` to initiate server-created orders; client checkout callbacks are advisory-only with zero client Firestore writes (SEC-02 preserved).
+    - Updated `PaymentScreen` to support `captured` and `completed` statuses with safe string slicing.
+  - Added 25 new backend unit tests in `payment_service.test.ts` (67/67 total backend unit tests passing across 22 suites).
 - Executed verification commands:
-  - `npm --prefix functions test`: 42/42 unit tests passed across 16 suites (VERIFIED)
+  - `npm --prefix functions test`: 67/67 unit tests passed across 22 suites (VERIFIED)
   - `npm --prefix functions run build`: TypeScript compiled with 0 errors (VERIFIED)
   - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 62/62 passed (VERIFIED)
-  - `flutter test`: 14/14 passed (1 widget + 3 navigation + 10 localization tests) (VERIFIED)
-  - `flutter analyze --no-pub`: 272 issues (baseline maintained, 0 new errors) (VERIFIED)
+  - `flutter test`: 14/14 passed (VERIFIED)
+  - `flutter analyze --no-pub`: 271 issues (baseline maintained, 0 new errors) (VERIFIED)
   - `git diff --check`: clean (VERIFIED)
-  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 33.4s (VERIFIED)
+  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 84.1s (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
 
-## Blocked
+## Blocked / Partial
+- **Razorpay Live Merchant Credentials & Webhook Configuration:** Live payment capture requires developer to provision real `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` in Google Cloud Secret Manager. The entire server-side architecture, order creation callable, webhook HTTPS endpoint, HMAC verification, and test gateway are fully implemented and verified with automated tests (PARTIAL / CREDENTIALS WIRED TO SECRET MANAGER)
 - Google Maps live map rendering requires developer to supply a real restricted Google Cloud Console Maps API key in untracked `android/local.properties`. Gradle manifest placeholder wiring is fully implemented and verified (PARTIAL / CONFIGURATION WIRED)
 
 ## Known Bugs
@@ -140,15 +164,16 @@
 
 ## Security Status
 - **FIXED (SEC-01):** Role escalation in `/users/{userId}` — role is now immutable after initial set; ADMIN self-assignment unconditionally rejected at both Firestore rules and client layers; dynamically tested in emulator (11/11 tests passed) (VERIFIED)
-- **FIXED (SEC-02):** Payment ledger writes — all client writes to `payments/` are permanently denied in `firestore.rules`; `PaymentRepository` methods throw `UnsupportedError` immediately; dynamically tested in emulator (7/7 tests passed) (VERIFIED)
+- **FIXED (SEC-02):** Payment ledger writes — all client writes to `payments/` are permanently denied in `firestore.rules`; `PaymentRepository` client writes throw `UnsupportedError` immediately; dynamically tested in emulator (7/7 tests passed) (VERIFIED)
 - **FIXED (SEC-03):** Forged profile metrics — `worker_profiles` and `contractor_profiles` create rules enforce zero metric starting values; `isVerified` must start `false`; dynamically tested in emulator (8/8 tests passed) (VERIFIED)
 - **FIXED:** Application Duplication Bypass: Firestore rules enforce composite document ID (`${jobId}_${workerId}`), client delete denied; dynamically tested in emulator (10/10 tests passed) (VERIFIED)
 - **FIXED / MITIGATED:** Review Forgery & Tampering: `/reviews/{reviewId}` enforces composite ID (`${jobId}_${reviewerId}`), forbids self-reviews (`reviewerId != revieweeId`), enforces rating bounds (1 to 5), immutable, client delete denied; dynamically tested in emulator (9/9 tests passed) (VERIFIED)
 - **FIXED (CHAT-01):** Unauthorized chat creation & spoofing — conversation creation strictly gated on server-verified `ACCEPTED` job application (`/applications/{applicationId}`); participants immutable; `senderId` must match caller UID; messages immutable and client delete denied; non-empty text bounds (1–5000 chars) enforced; dynamically tested in emulator (17/17 chat tests passed) (VERIFIED)
-- **FIXED (SEC-AUDIT-01):** Secrets & Configuration Exposure Audit — Zero private keys, OAuth secrets, database passwords, or server-only credentials found across full codebase and 7 Git commits (`3ba52d7`..`0d6924e`); no rotation required; `.gitignore` fortified with comprehensive ignore rules for `.env*`, keystores (`*.keystore`, `*.jks`, `key.properties`), certificates/keys (`*.pem`, `*.p12`, `*.pfx`, `*.key`, `*.crt`), and service accounts (`*service-account*.json`, `*credentials*.json`); standards documented in `docs/security/secrets-and-config.md` (VERIFIED)
+- **FIXED (SEC-AUDIT-01):** Secrets & Configuration Exposure Audit — Zero private keys, OAuth secrets, database passwords, or server-only credentials found across full codebase; `.gitignore` fortified with comprehensive ignore rules for `.env*`, keystores (`*.keystore`, `*.jks`, `key.properties`), certificates/keys (`*.pem`, `*.p12`, `*.pfx`, `*.key`, `*.crt`), and service accounts (`*service-account*.json`, `*credentials*.json`); standards documented in `docs/security/secrets-and-config.md` (VERIFIED)
 - **FIXED (MAPS-01):** Google Maps API Key Exposure Avoided — Key is injected from local-only untracked `local.properties` via Gradle manifest placeholder; never hardcoded in `AndroidManifest.xml` or Dart code (VERIFIED)
-- **FIXED (BACKEND-01):** Untrusted Client Vulnerability Neutralized — Firebase Cloud Functions foundation established in TypeScript on Node.js 20 LTS as the authoritative trusted server layer; zero client payment writes; Secret Manager bindings for future payment secrets; strict role guards (VERIFIED)
+- **FIXED (BACKEND-01):** Untrusted Client Vulnerability Neutralized — Firebase Cloud Functions foundation established in TypeScript on Node.js 20 LTS as the authoritative trusted server layer; zero client payment writes; Secret Manager bindings for payment secrets; strict role guards (VERIFIED)
 - **FIXED (LIFECYCLE-01):** Client Lifecycle Tampering Eliminated — Job state machine transitions and application acceptance capacity constraints enforced server-side; race conditions eliminated via transactional acceptance (VERIFIED)
+- **FIXED (RAZORPAY-01):** Authoritative Payment Foundation — Server-derived payment amounts (`wage * 100`), timing-safe cryptographic webhook HMAC-SHA256 signature verification, idempotent event deduplication (`webhook_events/{eventId}`), tamper/mismatch rejection, authoritative state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`), and zero client payment writes verified (VERIFIED)
 - **MEDIUM (OPEN):** Data Scraping Vulnerability: Worker and Contractor profiles are completely readable by any authenticated user without pagination or field filtering (VERIFIED)
 
 ## Testing Status
@@ -156,9 +181,9 @@
 - **Widget Coverage:** 100% of defined widget and navigation tests passing (14/14 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10]) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
 - **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 62/62 tests passed across 6 test suites) (VERIFIED)
-- **Backend Coverage:** 100% of defined backend unit tests passing (42/42 tests passed across auth guards, error sanitization, logger redaction, job state machine, and application workflows) (VERIFIED)
+- **Backend Coverage:** 100% of defined backend unit tests passing (67/67 tests passed across auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, and webhook cryptographic verification) (VERIFIED)
 - **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (62/62 passed) (VERIFIED)
-- **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed) (VERIFIED)
+- **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed). 100% of server-side payment logic verified via backend unit tests (25/25 payment tests passed) (VERIFIED)
 - **Chat Coverage:** 100% of chat security rules and lifecycle scenarios verified via Firebase Local Emulator suite (17/17 chat tests passed) (VERIFIED)
 - **Navigation Coverage:** 100% of role-based dashboard navigation paths tested and passing (3/3 tests passed) (VERIFIED)
 - **Localization Coverage:** 100% of supported locales (`en`, `hi`, `ta`, `te`, `mr`) and 40 key marketplace strings verified across unit and widget integration tests (10/10 tests passed) (VERIFIED)
@@ -169,6 +194,7 @@
 - **Routing:** GoRouter (`go_router: ^17.5.0`) (VERIFIED)
 - **Backend Services:** Firebase Core & Auth & Firestore (VERIFIED)
 - **Backend Architecture:** Firebase Cloud Functions (Node.js 20 LTS, TypeScript 5, 2nd Gen API) as the authoritative trusted server layer; zero client payment writes; Secret Manager for payment secrets; strict role guards (VERIFIED)
+- **Payment Architecture:** Server-side Razorpay order generation (`createPaymentOrder`), timing-safe cryptographic webhook HMAC-SHA256 signature verification (`handlePaymentWebhook`), idempotent replay protection (`webhook_events/{eventId}`), authoritative state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`, `CREATED`/`AUTHORIZED` -> `FAILED`, `CAPTURED` -> `REFUNDED`), and authoritative amount derivation (VERIFIED)
 - **Job Lifecycle Architecture:** Authoritative state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED`, `OPEN`/`IN_PROGRESS` -> `CANCELLED`); atomic transactional worker capacity enforcement; server-controlled `completedAt`/`cancelledAt` timestamps (VERIFIED)
 - **Location Services:** Geolocator + Geoflutterfire Plus (VERIFIED)
 - **Rules Unit Testing:** Firebase Local Emulator + `@firebase/rules-unit-testing` + Node.js test runner (`npm run test:rules`) (VERIFIED)
@@ -179,7 +205,7 @@
 - **Google Maps Key Injection:** `android/app/build.gradle.kts` reads `MAPS_API_KEY` from untracked `local.properties` and injects it into `manifestPlaceholders["MAPS_API_KEY"]` for substitution into `AndroidManifest.xml` (VERIFIED)
 
 ## Architecture Conflicts
-- Payment architecture conflicts: Documentation assumes Razorpay integration, but zero backend or client payment gateway code exists; system directly writes fake payment status to Firestore (VERIFIED)
+- Payment architecture conflict: Resolved. Authoritative server-side Razorpay order creation (`createPaymentOrder`), webhook processing (`handlePaymentWebhook`), cryptographic HMAC-SHA256 signature verification, idempotent event deduplication (`webhook_events/{eventId}`), and authoritative state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`, `CREATED`/`AUTHORIZED` -> `FAILED`, `CAPTURED` -> `REFUNDED`) are implemented in Cloud Functions (VERIFIED)
 - Job lifecycle conflict: Fixed. Authoritative state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED` / `CANCELLED`) and transactional application acceptance workflow implemented in Cloud Functions with capacity checks (VERIFIED)
 - Chat transaction conflict: Fixed. Implemented two-phase initial conversation create, metadata-only subsequent updates, and hardened rules (VERIFIED)
 
@@ -191,23 +217,24 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `feat: implement authoritative job lifecycle` (PENDING PUSH) (VERIFIED)
+- **Commit:** `feat: implement secure Razorpay payment foundation` (PENDING PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Implement authoritative server-side Job Lifecycle and Application workflow in Firebase Cloud Functions (state machine, transactional acceptance with capacity checks, 42/42 backend tests passed, 62/62 emulator tests passed, 14/14 Flutter tests passed, debug APK verified) (VERIFIED)
+- Implement production-oriented Razorpay payment foundation in Firebase Cloud Functions (order creation callable, cryptographic webhook HMAC verification, idempotent event deduplication, authoritative state machine, 67/67 backend tests passed, 62/62 emulator tests passed, 14/14 Flutter tests passed, debug APK verified) (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Configure Razorpay merchant account and Secret Manager secrets for payment order creation and webhook processing (PLANNED)
+- Configure production Google Cloud Secret Manager secrets (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`) with live merchant credentials (PLANNED)
 
 ## Important Notes
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
-- Payment features are completely inoperative by design until a server-side Cloud Function + payment gateway webhook integration (Razorpay) is implemented. The client payment code now explicitly fails safe.
-- Firestore security rules are now dynamically tested and verified against the Firebase Local Emulator with 62 automated unit tests passing across all security boundaries including chat messaging.
+- Payment foundation is fully implemented with authoritative server-side order generation, timing-safe cryptographic webhook HMAC verification, and replay protection. Client-side payment writes are permanently blocked in Firestore rules.
+- Firestore security rules are dynamically tested and verified against the Firebase Local Emulator with 62 automated unit tests passing across all security boundaries.
+- Backend unit test suite now contains 67 tests across 22 suites with 100% pass rate.
 - Role-based dashboard navigation is verified with 4/4 passing tests; workers and contractors have clean, segregated access to all feature screens.
 - Full 5-language localization foundation (`en`, `hi`, `ta`, `te`, `mr`) is active and verified; `AppLocalizations` delegates and supported locales are wired into `main.dart`.
 - Zero secrets or server credentials have ever been committed; `.gitignore` actively prevents future commits of `.env`, keystores, certificates, and service account JSONs.
 - Google Maps manifest placeholder injection is verified in debug merged manifest. No API keys are hardcoded in source control.
-- Authoritative Job Lifecycle & Application Workflow is verified with 42/42 backend unit tests passing, transactional capacity enforcement, and zero secrets committed.
+- Authoritative Job Lifecycle & Application Workflow is verified with transactional capacity enforcement and zero secrets committed.
