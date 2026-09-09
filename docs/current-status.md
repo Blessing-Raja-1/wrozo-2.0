@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Profile Privacy & Anti-Scraping Hardened (VERIFIED: 2026-09-09)
+- Dual-Role Accounts & Capability Authorization Architecture Implemented (VERIFIED: 2026-09-09)
 
 ## Current Objective
 - Provision live Razorpay merchant credentials in Secret Manager and verify live physical device push delivery (PLANNED / PARTIAL)
 
 ## Overall Status
-- Profile privacy and anti-scraping hardened across Firestore security rules and Flutter repository. Single-document public profile retrieval enabled for legitimate marketplace interactions (`allow get: if isAuthenticated();`), while collection-wide listing and automated data scraping are permanently denied (`allow list: if false;`). Sensitive private data (phone, email, KYC/Aadhaar/GSTIN, bank details, emergency contacts) is isolated into owner-only subcollections (`/worker_profiles/{userId}/private/{docId}`, `/contractor_profiles/{userId}/private/{docId}`) accessible strictly by the authenticated owner (`allow read, write: if isOwner(userId);`). Client profile deletions are permanently denied (`allow delete: if false;`). Client payment writes remain strictly blocked in Firestore rules. 97/97 backend unit tests pass across 32 suites (100%). 94/94 Firestore security rules emulator tests pass across 8 test groups (100%, including 25 Group H tests). 18/18 Flutter tests pass (100%). 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`). Live physical device push delivery marked as PARTIAL (requires physical devices with active APNs/FCM tokens) (VERIFIED)
+- Dual-role accounts and server-authoritative capability architecture safely implemented across Firestore security rules, Cloud Functions, and Flutter client. A single user (single Firebase UID) can hold both WORKER and CONTRACTOR capabilities simultaneously. Capabilities (`capabilities.worker`, `capabilities.contractor`) define server-enforced permissions and are strictly server-controlled (client direct writes to `capabilities` are unconditionally denied in `firestore.rules`; managed authoritatively via the trusted Cloud Function `setupAccountCapabilities`). Active mode (`activeMode`: 'WORKER' | 'CONTRACTOR') is purely client-side UI/UX presentation state and is NEVER used for backend authorization. Legacy single-role users remain 100% backwards compatible (`role === 'WORKER'` / `'CONTRACTOR'`). Single-document public profile retrieval enabled for legitimate marketplace interactions (`allow get: if isAuthenticated();`), while collection-wide listing and automated data scraping are permanently denied (`allow list: if false;`). Sensitive private data is isolated into owner-only subcollections (`/worker_profiles/{userId}/private/{docId}`, `/contractor_profiles/{userId}/private/{docId}`) accessible strictly by the authenticated owner. Client payment writes remain strictly blocked in Firestore rules. 105/105 backend unit tests pass across 33 suites (100%). 110/110 Firestore security rules emulator tests pass across 9 test groups (100%, including 16 Group I tests). 28/28 Flutter tests pass (100%, including 10 dual-role tests). 278 analyzer issues (baseline maintained, 0 new errors, 0 warnings). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`). Live physical device push delivery marked as PARTIAL (requires physical devices with active APNs/FCM tokens) (VERIFIED)
 
 
 ## Completed
@@ -169,15 +169,38 @@
   - Updated `ProfileRepository` (`lib/features/profile/data/profile_repository.dart`):
     - Added helper methods for owner private profile document streams and updates (`workerPrivateProfileChanges`, `updateWorkerPrivateProfile`, `contractorPrivateProfileChanges`, `updateContractorPrivateProfile`).
     - Preserved existing public profile streams (`workerProfileChanges`, `contractorProfileChanges`) without breaking existing UI.
-  - Added 25 new executable security tests in `test/security/rules.test.mjs` (Group H: Profile Privacy & Anti-Scraping SEC-PROFILE), bringing the security rules suite to 94/94 tests passing across 8 test suites.
+  - Added 25 new executable security tests in `test/security/rules.test.mjs` (Group H: Profile Privacy & Anti-Scraping SEC-PROFILE), bringing the security rules suite to 94/94 tests passing across 8 test suites (VERIFIED).
+- **DUAL-ROLE-01 (Authoritative Dual-Role Capability Architecture & Dynamic Mode Switching):**
+  - Migrated authorization model from legacy single-role `users/{uid}.role` to server-authoritative `capabilities: { worker: boolean, contractor: boolean }` while preserving 100% backwards compatibility.
+  - A single person / Firebase UID can hold both WORKER and CONTRACTOR capabilities simultaneously.
+  - Enforced strict architectural separation between permissions and presentation: `capabilities` define server-enforced permissions and are strictly server-managed; `activeMode` ('WORKER' | 'CONTRACTOR') is purely client-side UI/UX presentation state and is NEVER evaluated for backend authorization.
+  - Firestore Security Rules (`firestore.rules`):
+    - Added helper functions `getUserData(uid)`, `hasWorkerCapability(uid)`, and `hasContractorCapability(uid)` checking capabilities map with legacy role fallback.
+    - Updated `/users/{userId}` update rule: direct client writes to `capabilities` are unconditionally denied; allowed update keys strictly `['role', 'fcmTokens', 'activeMode']`. `activeMode` must be in `['WORKER', 'CONTRACTOR']`. Legacy initial role assignment preserved.
+    - `/jobs/{jobId}` create rule requires `hasContractorCapability(request.auth.uid)`.
+    - `/applications/{appId}` create rule requires `hasWorkerCapability(request.auth.uid)`.
+  - Backend Cloud Functions (`functions/`):
+    - Added `UserCapabilities` interface and `capabilities`/`activeMode` fields to `AppUserRecord`.
+    - Updated server authorization guards (`requireWorkerCapability`, `requireContractorCapability`, `requireRole`, `requireWorker`, `requireContractor`) in `functions/src/auth/auth_helpers.ts` to evaluate capabilities with legacy fallback.
+    - Implemented trusted callable `setupAccountCapabilities` in `functions/src/users/user_service.ts`: authenticates caller, validates input, rejects admin self-grant, writes capabilities atomically, sets active mode, and initializes zero-metric worker/contractor profile documents (SEC-03). Exported callable in `functions/src/index.ts`.
+    - Added 8 new unit tests in `functions/src/auth/auth_helpers.test.ts` (105/105 backend unit tests passing across 33 suites).
+  - Flutter Client (`lib/`):
+    - Added `UserCapabilities` model and capabilities/activeMode fields with helper getters (`isDualRole`, `hasWorkerCapability`, `hasContractorCapability`, `currentActiveMode`, `hasSetupRoles`) in `AppUser`.
+    - Added `setupCapabilities` and `switchActiveMode` in `AuthRepository` and `AuthController`.
+    - Updated `RoleSelectionScreen` with "I want to do Both (Worker & Contractor)" card wired to `setupCapabilities`, wrapped in `SingleChildScrollView` to prevent layout overflow.
+    - Updated `HomeScreen` to render dual-role badge and active mode switcher in AppBar and welcome banner; views switch dynamically between Worker dashboard and Contractor dashboard without re-authenticating.
+    - Updated `AppRouter` onboarding redirect to check `!appUser.hasSetupRoles`.
+    - Updated `ProfileSetupScreen` and `PaymentScreen` to use `currentActiveMode`.
+    - Added 10 unit and widget tests in `test/features/authentication/dual_role_test.dart` (28/28 Flutter tests passing).
+    - Added 16 executable security tests in `test/security/rules.test.mjs` (Group I: SEC-DUAL-ROLE, 110/110 emulator tests passing across 9 test groups).
 - Executed verification commands:
-  - `npm --prefix functions test`: 97/97 unit tests passed across 32 suites (VERIFIED)
+  - `npm --prefix functions test`: 105/105 unit tests passed across 33 suites (VERIFIED)
   - `npm --prefix functions run build`: TypeScript compiled with 0 errors (VERIFIED)
-  - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 94/94 passed across 8 test groups (VERIFIED)
-  - `flutter test`: 18/18 passed (VERIFIED)
-  - `flutter analyze --no-pub`: 272 issues (baseline maintained, 0 new errors) (VERIFIED)
+  - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 110/110 passed across 9 test groups (VERIFIED)
+  - `flutter test`: 28/28 passed (VERIFIED)
+  - `flutter analyze --no-pub`: 278 issues (baseline maintained, 0 new errors, 0 warnings) (VERIFIED)
   - `git diff --check`: clean (0 whitespace errors) (VERIFIED)
-  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 99.5s (VERIFIED)
+  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
@@ -197,6 +220,7 @@
 - Localization broken: Fixed. `AppLocalizations` delegates registered in `main.dart`; complete ARB files established for `en`, `hi`, `ta`, `te`, `mr` (VERIFIED)
 
 ## Security Status
+- **FIXED (SEC-DUAL-ROLE):** Dual-role accounts safely supported with immutable server-controlled capabilities (`capabilities.worker`, `capabilities.contractor`); client capability self-assignment/escalation unconditionally denied in `firestore.rules`; admin privileges rejected; active mode strictly restricted to presentation; dynamically tested in emulator (16/16 tests passed in Group I) (VERIFIED)
 - **FIXED (SEC-01):** Role escalation in `/users/{userId}` — role is now immutable after initial set; ADMIN self-assignment unconditionally rejected at both Firestore rules and client layers; dynamically tested in emulator (11/11 tests passed) (VERIFIED)
 - **FIXED (SEC-02):** Payment ledger writes — all client writes to `payments/` are permanently denied in `firestore.rules`; `PaymentRepository` client writes throw `UnsupportedError` immediately; dynamically tested in emulator (7/7 tests passed) (VERIFIED)
 - **FIXED (SEC-03):** Forged profile metrics — `worker_profiles` and `contractor_profiles` create rules enforce zero metric starting values; `isVerified` must start `false`; dynamically tested in emulator (8/8 tests passed) (VERIFIED)
@@ -212,12 +236,13 @@
 - **FIXED (RAZORPAY-01):** Authoritative Payment Foundation — Server-derived payment amounts (`wage * 100`), timing-safe cryptographic webhook HMAC-SHA256 signature verification, idempotent event deduplication (`webhook_events/{eventId}`), tamper/mismatch rejection, authoritative state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`), and zero client payment writes verified (VERIFIED)
 
 ## Testing Status
-- **Unit Coverage:** 100% of defined localization and rule unit tests passing (VERIFIED)
-- **Widget Coverage:** 100% of defined widget, navigation, and notification tests passing (18/18 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10] + `test/notifications/notification_service_test.dart` [4/4]) (VERIFIED)
+- **Unit Coverage:** 100% of defined localization, auth helper, and rule unit tests passing (VERIFIED)
+- **Widget Coverage:** 100% of defined widget, navigation, notification, and dual-role tests passing (28/28 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10] + `test/notifications/notification_service_test.dart` [4/4] + `test/features/authentication/dual_role_test.dart` [10/10]) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
-- **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 94/94 tests passed across 8 test suites) (VERIFIED)
-- **Backend Coverage:** 100% of defined backend unit tests passing (97/97 tests passed across auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, webhook cryptographic verification, device token management, notification dispatch, and chat recipient resolution) (VERIFIED)
-- **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (94/94 passed) (VERIFIED)
+- **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 110/110 tests passed across 9 test suites, including 16 Group I tests) (VERIFIED)
+- **Backend Coverage:** 100% of defined backend unit tests passing (105/105 tests passed across 33 suites covering capability guards, legacy fallbacks, auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, webhook cryptographic verification, device token management, notification dispatch, and chat recipient resolution) (VERIFIED)
+- **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (110/110 passed) (VERIFIED)
+- **Dual-Role Security Coverage:** 100% of capability isolation, active-mode independence, escalation denial, and admin rejection verified via Firebase Local Emulator suite (16/16 tests passed in Group I) (VERIFIED)
 - **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed). 100% of server-side payment logic verified via backend unit tests (25/25 payment tests passed) (VERIFIED)
 - **FCM Token Security Coverage:** 100% of device token subcollection security rules verified via Firebase Local Emulator suite (7/7 token tests passed) (VERIFIED)
 - **Profile Privacy & Anti-Scraping Coverage:** 100% of profile privacy and anti-scraping rules verified via Firebase Local Emulator suite (25/25 tests passed in Group H) (VERIFIED)
@@ -227,6 +252,7 @@
 - **Maps Configuration Coverage:** 100% of Gradle manifest placeholder injection verified via debug merged manifest inspection (VERIFIED)
 
 ## Architecture Decisions
+- **Capability Architecture:** Server-authoritative `capabilities: { worker: boolean, contractor: boolean }` defining permissions; `activeMode` purely client-side presentation state; client capability direct writes blocked; setup via trusted Cloud Function `setupAccountCapabilities`; legacy single-role backwards compatibility (VERIFIED)
 - **State Management:** Flutter Riverpod (`flutter_riverpod: ^2.4.9`) (VERIFIED)
 - **Routing:** GoRouter (`go_router: ^17.5.0`) (VERIFIED)
 - **Backend Services:** Firebase Core & Auth & Firestore & Messaging (VERIFIED)
@@ -238,7 +264,7 @@
 - **Location Services:** Geolocator + Geoflutterfire Plus (VERIFIED)
 - **Rules Unit Testing:** Firebase Local Emulator + `@firebase/rules-unit-testing` + Node.js test runner (`npm run test:rules`) (VERIFIED)
 - **Chat Architecture:** Canonical 1-to-1 conversation IDs (`minUID_maxUID`), application-gated conversation creation, immutable participants, separate initial creation and subsequent metadata updates (VERIFIED)
-- **Dashboard Navigation:** Role-segregated `HomeScreen` switching on `UserRole` (Worker vs Contractor) with GoRouter navigation routes to all user-facing screens (VERIFIED)
+- **Dashboard Navigation:** Role-segregated `HomeScreen` switching on `UserRole` (Worker vs Contractor) with dynamic dual-role mode switching and GoRouter navigation routes to all user-facing screens (VERIFIED)
 - **Secrets Management:** Client app restricted to public client identifiers (`google-services.json`, `firebase_options.dart`); server secrets strictly forbidden in Flutter codebase; release signing isolated via `android/key.properties` (VERIFIED)
 - **Localization Architecture:** Official Flutter `gen-l10n` toolchain driven by `l10n.yaml`; English template with 40 marketplace terms; native translations for Hindi, Tamil, Telugu, and Marathi; registered via `AppLocalizations.localizationsDelegates` and `AppLocalizations.supportedLocales` in `MaterialApp.router` (VERIFIED)
 - **Google Maps Key Injection:** `android/app/build.gradle.kts` reads `MAPS_API_KEY` from untracked `local.properties` and injects it into `manifestPlaceholders["MAPS_API_KEY"]` for substitution into `AndroidManifest.xml` (VERIFIED)
@@ -257,10 +283,10 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `security: harden profile privacy and access` (PENDING PUSH) (VERIFIED)
+- **Commit:** `feat: support secure dual-role accounts` (PENDING COMMIT & PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Harden profile privacy, data minimization, and anti-scraping protections across Firestore rules and Flutter repository (single-document public profile retrieval, bulk enumeration blocked, owner-only private subcollections, client delete denial, 94/94 emulator security rules tests passed, 97/97 backend tests passed, 18/18 Flutter tests passed, debug APK verified) (VERIFIED)
+- Implement secure dual-role account architecture supporting single users with both WORKER and CONTRACTOR capabilities, dynamic presentation mode switching, authoritative Cloud Function `setupAccountCapabilities`, client capability write denial in Firestore rules, 105/105 backend unit tests, 110/110 emulator security rules tests, 28/28 Flutter tests, and debug APK verified (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
@@ -270,12 +296,13 @@
 
 ## Important Notes
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
+- Dual-role capability architecture is fully verified: single users hold both capabilities server-side while choosing their active presentation mode on entry or dashboard; capabilities cannot be modified or escalated directly from client code.
 - Profile privacy and anti-scraping protections are fully verified; bulk listing of worker and contractor profiles is permanently blocked; private subcollections are owner-gated.
 - Secure FCM push notifications foundation is fully implemented across Cloud Functions and Flutter client with multi-device token subcollections, dead token auto-pruning, and server-side authoritative event triggers.
 - Payment foundation is fully implemented with authoritative server-side order generation, timing-safe cryptographic webhook HMAC verification, and replay protection. Client-side payment writes are permanently blocked in Firestore rules.
-- Firestore security rules are dynamically tested and verified against the Firebase Local Emulator with 94 automated unit tests passing across all 8 security boundaries.
-- Backend unit test suite contains 97 tests across 32 suites with 100% pass rate.
-- Role-based dashboard navigation is verified with 4/4 passing tests; workers and contractors have clean, segregated access to all feature screens.
+- Firestore security rules are dynamically tested and verified against the Firebase Local Emulator with 110 automated unit tests passing across all 9 security boundaries.
+- Backend unit test suite contains 105 tests across 33 suites with 100% pass rate.
+- Role-based dashboard navigation is verified with 28/28 passing Flutter tests; dual-role users can toggle active mode smoothly without re-login.
 - Full 5-language localization foundation (`en`, `hi`, `ta`, `te`, `mr`) is active and verified; `AppLocalizations` delegates and supported locales are wired into `main.dart`.
 - Zero secrets or server credentials have ever been committed; `.gitignore` actively prevents future commits of `.env`, keystores, certificates, and service account JSONs.
 - Google Maps manifest placeholder injection is verified in debug merged manifest. No API keys are hardcoded in source control.

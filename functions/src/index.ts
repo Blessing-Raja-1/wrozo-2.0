@@ -12,6 +12,7 @@ import {
   ConflictError,
 } from "./shared/errors";
 import { logger } from "./shared/logger";
+import { userService, SetupCapabilitiesInput } from "./users/user_service";
 import { jobService } from "./jobs/job_service";
 import { applicationService } from "./applications/application_service";
 import { paymentService } from "./payments/payment_service";
@@ -280,5 +281,20 @@ export const onChatMessageCreated = onDocumentCreated(
       senderId: data?.senderId,
       text: data?.text,
     });
+  }
+);
+
+/**
+ * Authoritative Account Capabilities Setup Callable
+ * Enables new and dual-role users to initialize worker and/or contractor capabilities.
+ */
+export const setupAccountCapabilities = onCall(
+  { region: REGION, cors: true },
+  async (request: CallableRequest<SetupCapabilitiesInput>) => {
+    try {
+      return await userService.setupAccountCapabilities(request, request.data);
+    } catch (error) {
+      throw handleFunctionError(error, "setupAccountCapabilities", request.auth?.uid);
+    }
   }
 );

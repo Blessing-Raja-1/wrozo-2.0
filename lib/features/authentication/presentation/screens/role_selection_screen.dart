@@ -16,7 +16,25 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
 
   void _submit() {
     if (_selectedRole != null) {
-      ref.read(authControllerProvider.notifier).setRole(_selectedRole!);
+      if (_selectedRole == 'WORKER') {
+        ref.read(authControllerProvider.notifier).setupCapabilities(
+              worker: true,
+              contractor: false,
+              activeMode: 'WORKER',
+            );
+      } else if (_selectedRole == 'CONTRACTOR') {
+        ref.read(authControllerProvider.notifier).setupCapabilities(
+              worker: false,
+              contractor: true,
+              activeMode: 'CONTRACTOR',
+            );
+      } else if (_selectedRole == 'BOTH') {
+        ref.read(authControllerProvider.notifier).setupCapabilities(
+              worker: true,
+              contractor: true,
+              activeMode: 'WORKER',
+            );
+      }
     }
   }
 
@@ -27,22 +45,22 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
               Text(
                 'How do you want to use Wrozo?',
                 style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28),
               ),
               const SizedBox(height: 8),
               Text(
-                'You can choose to find work or hire workers.',
+                'You can choose to find work, hire workers, or do both from a single account.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 24),
               _buildRoleCard(
                 context: context,
                 title: 'I am a Worker',
@@ -58,13 +76,21 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
                 icon: Icons.business,
                 role: 'CONTRACTOR',
               ),
-              const Spacer(),
+              const SizedBox(height: 16),
+              _buildRoleCard(
+                context: context,
+                title: 'I want to do Both',
+                description: 'Find jobs as a worker and hire workers as a contractor from one account.',
+                icon: Icons.swap_horiz,
+                role: 'BOTH',
+              ),
+              const SizedBox(height: 32),
               PrimaryButton(
                 text: 'Continue',
                 isLoading: isLoading,
                 onPressed: _selectedRole != null ? _submit : null,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
             ],
           ),
         ),

@@ -59,6 +59,34 @@ class AuthController extends AutoDisposeNotifier<AsyncValue<void>> {
     }
   }
 
+  Future<void> setupCapabilities({
+    required bool worker,
+    required bool contractor,
+    String? activeMode,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      await ref.read(authRepositoryProvider).setupCapabilities(
+            worker: worker,
+            contractor: contractor,
+            activeMode: activeMode,
+          );
+      state = const AsyncData(null);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+    }
+  }
+
+  Future<void> switchActiveMode(String newMode) async {
+    state = const AsyncLoading();
+    try {
+      await ref.read(authRepositoryProvider).switchActiveMode(newMode);
+      state = const AsyncData(null);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+    }
+  }
+
   Future<void> signOut() async {
     state = const AsyncLoading();
     try {

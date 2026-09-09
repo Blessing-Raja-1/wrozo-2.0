@@ -19,12 +19,19 @@ export type PaymentStatus =
   | "COMPLETED";
 
 
+export interface UserCapabilities {
+  worker: boolean;
+  contractor: boolean;
+}
+
 export interface AppUserRecord {
   phone: string;
   role?: UserRole;
   status: UserStatus;
   createdAt: Timestamp;
   fcmTokens?: string[];
+  capabilities?: UserCapabilities;
+  activeMode?: "WORKER" | "CONTRACTOR";
 }
 
 export interface WorkerProfileRecord {

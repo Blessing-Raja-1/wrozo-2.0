@@ -11,7 +11,7 @@
 ## 2. Security & Trust Model
 - **The mobile client is untrusted.** Never trust client assertions for authorization, state transitions, or verification.
 - **Server-Side Authorization:** Sensitive authorization, validations, and constraints must be strictly enforced server-side (e.g., Firestore Security Rules, Cloud Functions).
-- **Role Enforcement:** The client must never control or assign privileged roles (`role`, `isVerified`, etc.).
+- **Role & Capability Enforcement:** The client must never control or self-assign privileged capabilities or roles (`capabilities`, `role`, `isVerified`, `ADMIN`). Accounts support dual-role capabilities (Worker and Contractor under a single Firebase UID) authorized independently via server capabilities; `activeMode` is strictly presentation state and never an authorization mechanism.
 - **Payments:** The client must never be trusted for payment status, payment verification, or balance updates. Payment completion must be verified via server-side webhooks or authoritative backend systems.
 - **Secrets Management:** Never commit secrets, API keys, credentials, or private configuration files.
 

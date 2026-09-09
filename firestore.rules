@@ -16,29 +16,56 @@ service cloud.firestore {
       return role in ['WORKER', 'CONTRACTOR'];
     }
 
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    // Capability authorization: checks user capabilities map with fallback to legacy role
+    function hasWorkerCapability(uid) {
+      let userData = getUserData(uid);
+      return (userData.get('capabilities', {}).get('worker', false) == true)
+        || (userData.get('role', '') == 'WORKER');
+    }
+
+    function hasContractorCapability(uid) {
+      let userData = getUserData(uid);
+      return (userData.get('capabilities', {}).get('contractor', false) == true)
+        || (userData.get('role', '') == 'CONTRACTOR');
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
 
-      // SEC-01 (create): role is never part of the initial user document.
-      // The account is created without a role; role assignment happens via a separate
-      // update operation (see update rule below).
+      // SEC-01 (create): role and capabilities are never part of the initial user document.
+      // The account is created with minimal public fields; role/capability setup happens later.
       allow create: if isOwner(userId)
         && request.resource.data.keys().hasOnly(['phone', 'status', 'createdAt']);
 
-      // SEC-01 (update): role may be written ONCE if it is currently absent (null/missing).
-      // Once a role exists in the document, it cannot be changed by the client.
-      // Only 'WORKER' or 'CONTRACTOR' are accepted — 'ADMIN' is always rejected.
-      // fcmTokens may be updated freely for push notification registration.
+      // SEC-01 (update):
+      // - capabilities CANNOT be written by client (must be assigned via trusted backend).
+      // - activeMode may be updated by owner to 'WORKER' or 'CONTRACTOR' (presentation mode only).
+      // - fcmTokens may be updated freely for push notification registration.
+      // - legacy role may be written ONCE if currently absent (SEC-01 immutability).
       allow update: if isOwner(userId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'fcmTokens'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'fcmTokens', 'activeMode'])
         && (
-          // Branch A: fcmTokens-only update — role is not being touched at all.
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+          // Branch A: Non-role update (activeMode and/or fcmTokens)
+          (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['activeMode'])
+              || request.resource.data.activeMode in ['WORKER', 'CONTRACTOR']
+            )
+          )
           ||
-          // Branch B: initial role assignment — role must not currently exist AND new value must be allowed.
+          // Branch B: initial legacy role assignment (SEC-01: preserved for backwards compatibility and tests A5/A6)
           (
             (!('role' in resource.data) || resource.data.role == null)
             && isAllowedRole(request.resource.data.role)
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['activeMode'])
+              || request.resource.data.activeMode in ['WORKER', 'CONTRACTOR']
+            )
           )
         );
 
@@ -105,7 +132,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (resource.data.status == 'OPEN' || resource.data.contractorId == request.auth.uid);
       allow create: if isAuthenticated()
         && request.resource.data.contractorId == request.auth.uid
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CONTRACTOR'
+        && hasContractorCapability(request.auth.uid)
         && request.resource.data.status == 'OPEN';
       allow update: if isAuthenticated()
         && resource.data.contractorId == request.auth.uid
@@ -118,7 +145,7 @@ service cloud.firestore {
         && request.resource.data.workerId == request.auth.uid
         && request.resource.data.status == 'PENDING'
         && appId == request.resource.data.jobId + '_' + request.resource.data.workerId
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'WORKER';
+        && hasWorkerCapability(request.auth.uid);
       allow update: if isAuthenticated()
         && (
              (resource.data.contractorId == request.auth.uid && request.resource.data.status in ['ACCEPTED', 'REJECTED']) ||

@@ -71,7 +71,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final appUser = ref.watch(appUserProvider).value;
-    final isWorker = appUser?.role == 'WORKER';
+    final isWorker = (appUser?.currentActiveMode ?? 'WORKER') == 'WORKER';
     
     final profileState = ref.watch(profileControllerProvider);
     final isLoading = profileState is AsyncLoading;

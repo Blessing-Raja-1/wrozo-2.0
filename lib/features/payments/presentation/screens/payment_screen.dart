@@ -14,7 +14,7 @@ class PaymentScreen extends ConsumerWidget {
     if (user == null) return const Scaffold(body: Center(child: Text('Not logged in')));
 
     final appUser = ref.watch(appUserProvider).value;
-    final isContractor = appUser?.role == 'CONTRACTOR';
+    final isContractor = (appUser?.currentActiveMode ?? 'WORKER') == 'CONTRACTOR';
 
     final paymentsAsync = isContractor
         ? ref.watch(contractorPaymentsProvider(user.uid))

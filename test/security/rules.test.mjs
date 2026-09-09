@@ -1138,3 +1138,218 @@ describe('Group H: Profile Privacy & Anti-Scraping (SEC-PROFILE)', () => {
     await assertFails(dbContractor1.collectionGroup('private').get());
   });
 });
+
+describe('Group I: Dual-Role Accounts & Capability-Based Security', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+
+      // Seed single-role worker with explicit capabilities
+      await db.collection('users').doc('cap_worker1').set({
+        phone: '+919999000001',
+        status: 'ACTIVE',
+        capabilities: { worker: true, contractor: false },
+        activeMode: 'WORKER',
+        createdAt: new Date(),
+      });
+
+      // Seed single-role contractor with explicit capabilities
+      await db.collection('users').doc('cap_contractor1').set({
+        phone: '+919999000002',
+        status: 'ACTIVE',
+        capabilities: { worker: false, contractor: true },
+        activeMode: 'CONTRACTOR',
+        createdAt: new Date(),
+      });
+
+      // Seed dual-role user with both capabilities
+      await db.collection('users').doc('dual_user1').set({
+        phone: '+919999000003',
+        status: 'ACTIVE',
+        capabilities: { worker: true, contractor: true },
+        activeMode: 'WORKER',
+        createdAt: new Date(),
+      });
+
+      // Seed open job owned by cap_contractor1
+      await db.collection('jobs').doc('job_group_i_1').set({
+        contractorId: 'cap_contractor1',
+        title: 'Painting Work',
+        status: 'OPEN',
+        createdAt: new Date(),
+      });
+
+      // Seed open job owned by dual_user1
+      await db.collection('jobs').doc('job_group_i_dual').set({
+        contractorId: 'dual_user1',
+        title: 'Roof Repair',
+        status: 'OPEN',
+        createdAt: new Date(),
+      });
+    });
+  });
+
+  test('I1: single-role worker with worker capability can apply for open job', async () => {
+    const db = testEnv.authenticatedContext('cap_worker1').firestore();
+    await assertSucceeds(db.collection('applications').doc('job_group_i_1_cap_worker1').set({
+      workerId: 'cap_worker1',
+      contractorId: 'cap_contractor1',
+      jobId: 'job_group_i_1',
+      status: 'PENDING',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I2: single-role worker with worker capability CANNOT create a job', async () => {
+    const db = testEnv.authenticatedContext('cap_worker1').firestore();
+    await assertFails(db.collection('jobs').doc('job_worker_hack').set({
+      contractorId: 'cap_worker1',
+      title: 'Illegal Job Post',
+      status: 'OPEN',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I3: single-role contractor with contractor capability can create a job', async () => {
+    const db = testEnv.authenticatedContext('cap_contractor1').firestore();
+    await assertSucceeds(db.collection('jobs').doc('job_contractor_ok').set({
+      contractorId: 'cap_contractor1',
+      title: 'Valid Contractor Job',
+      status: 'OPEN',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I4: single-role contractor with contractor capability CANNOT apply for a job', async () => {
+    const db = testEnv.authenticatedContext('cap_contractor1').firestore();
+    await assertFails(db.collection('applications').doc('job_group_i_dual_cap_contractor1').set({
+      workerId: 'cap_contractor1',
+      contractorId: 'dual_user1',
+      jobId: 'job_group_i_dual',
+      status: 'PENDING',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I5: dual-role user with both capabilities can create an open job', async () => {
+    const db = testEnv.authenticatedContext('dual_user1').firestore();
+    await assertSucceeds(db.collection('jobs').doc('job_dual_create_1').set({
+      contractorId: 'dual_user1',
+      title: 'Dual Role Masonry Job',
+      status: 'OPEN',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I6: dual-role user with both capabilities can apply for an open job', async () => {
+    const db = testEnv.authenticatedContext('dual_user1').firestore();
+    await assertSucceeds(db.collection('applications').doc('job_group_i_1_dual_user1').set({
+      workerId: 'dual_user1',
+      contractorId: 'cap_contractor1',
+      jobId: 'job_group_i_1',
+      status: 'PENDING',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I7: dual-role user can switch activeMode to CONTRACTOR', async () => {
+    const db = testEnv.authenticatedContext('dual_user1').firestore();
+    await assertSucceeds(db.collection('users').doc('dual_user1').update({
+      activeMode: 'CONTRACTOR',
+    }));
+  });
+
+  test('I8: dual-role user can switch activeMode to WORKER', async () => {
+    const db = testEnv.authenticatedContext('dual_user1').firestore();
+    await assertSucceeds(db.collection('users').doc('dual_user1').update({
+      activeMode: 'WORKER',
+    }));
+  });
+
+  test('I9: changing activeMode does NOT grant contractor capability to single-role worker', async () => {
+    const db = testEnv.authenticatedContext('cap_worker1').firestore();
+    // Worker switches activeMode to CONTRACTOR
+    await assertSucceeds(db.collection('users').doc('cap_worker1').update({
+      activeMode: 'CONTRACTOR',
+    }));
+
+    // But contractor operations remain strictly denied because worker lacks contractor capability
+    await assertFails(db.collection('jobs').doc('job_escalation_fail').set({
+      contractorId: 'cap_worker1',
+      title: 'Spoofed Contractor Job',
+      status: 'OPEN',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I10: changing activeMode does NOT grant worker capability to single-role contractor', async () => {
+    const db = testEnv.authenticatedContext('cap_contractor1').firestore();
+    // Contractor switches activeMode to WORKER
+    await assertSucceeds(db.collection('users').doc('cap_contractor1').update({
+      activeMode: 'WORKER',
+    }));
+
+    // But worker operations remain strictly denied because contractor lacks worker capability
+    await assertFails(db.collection('applications').doc('job_group_i_dual_cap_contractor1').set({
+      workerId: 'cap_contractor1',
+      contractorId: 'dual_user1',
+      jobId: 'job_group_i_dual',
+      status: 'PENDING',
+      createdAt: new Date(),
+    }));
+  });
+
+  test('I11: client attempt to directly write or escalate capabilities is DENIED', async () => {
+    const db = testEnv.authenticatedContext('cap_worker1').firestore();
+    await assertFails(db.collection('users').doc('cap_worker1').update({
+      capabilities: { worker: true, contractor: true },
+    }));
+    await assertFails(db.collection('users').doc('cap_worker1').update({
+      'capabilities.contractor': true,
+    }));
+  });
+
+  test('I12: client attempt to self-assign ADMIN capability is DENIED', async () => {
+    const db = testEnv.authenticatedContext('dual_user1').firestore();
+    await assertFails(db.collection('users').doc('dual_user1').update({
+      'capabilities.admin': true,
+    }));
+    await assertFails(db.collection('users').doc('dual_user1').update({
+      role: 'ADMIN',
+    }));
+  });
+
+  test('I13: client attempt to modify another users capabilities is DENIED', async () => {
+    const db = testEnv.authenticatedContext('cap_worker1').firestore();
+    await assertFails(db.collection('users').doc('cap_contractor1').update({
+      'capabilities.worker': false,
+    }));
+  });
+
+  test('I14: client attempt to modify another users activeMode is DENIED', async () => {
+    const db = testEnv.authenticatedContext('cap_worker1').firestore();
+    await assertFails(db.collection('users').doc('dual_user1').update({
+      activeMode: 'CONTRACTOR',
+    }));
+  });
+
+  test('I15: unauthenticated client cannot manipulate capabilities or activeMode', async () => {
+    const unauthDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(unauthDb.collection('users').doc('dual_user1').update({
+      activeMode: 'CONTRACTOR',
+    }));
+  });
+
+  test('I16: client attempt to set invalid activeMode is DENIED', async () => {
+    const db = testEnv.authenticatedContext('dual_user1').firestore();
+    await assertFails(db.collection('users').doc('dual_user1').update({
+      activeMode: 'ADMIN',
+    }));
+    await assertFails(db.collection('users').doc('dual_user1').update({
+      activeMode: 'SUPERUSER',
+    }));
+    await assertFails(db.collection('users').doc('dual_user1').update({
+      activeMode: '',
+    }));
+  });
+});

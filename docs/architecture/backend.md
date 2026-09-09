@@ -97,7 +97,11 @@ The backend layer serves as the **authoritative trust boundary** for the applica
 - **Document ID:** Firebase Auth UID.
 - **Fields:**
   - `phone`: string (E.164 format)
-  - `role`: optional `'WORKER' | 'CONTRACTOR' | 'ADMIN'`
+  - `role`: optional legacy `'WORKER' | 'CONTRACTOR'` (retained for backward compatibility)
+  - `capabilities`: map containing:
+    - `worker`: boolean (true if account possesses Worker permissions)
+    - `contractor`: boolean (true if account possesses Contractor permissions)
+  - `activeMode`: `'WORKER' | 'CONTRACTOR'` (current user presentation mode; **NOT an authorization mechanism**)
   - `status`: `'ACTIVE' | 'SUSPENDED'`
   - `createdAt`: server timestamp
   - `fcmTokens`: optional legacy string array
@@ -106,7 +110,7 @@ The backend layer serves as the **authoritative trust boundary** for the applica
   - `platform`: `'android' | 'ios' | 'web'`
   - `createdAt`: timestamp
   - `updatedAt`: timestamp
-- **Rules:** Owner read and write (`allow read, write: if isOwner(userId);`); unauthenticated and cross-user access strictly denied. Client cannot modify or view other users' tokens.
+- **Rules:** Owner read; client update restricted to `['role', 'fcmTokens', 'activeMode']`. Client-side direct writes to `capabilities` are unconditionally denied by Firestore rules. `activeMode` may be updated freely by the owner between `['WORKER', 'CONTRACTOR']` without altering authorization capabilities or account identity.
 
 ### 2. `worker_profiles/{userId}`
 - **Document ID:** Worker UID.
@@ -283,17 +287,44 @@ Executed inside an atomic Firestore transaction (`db.runTransaction`):
 
 ### Callable Cloud Functions Catalog
 
-| Function Name | Allowed Role | Input Interface | Output | Description |
+| Function Name | Required Capability | Input Interface | Output | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `getBackendStatus` | Any / Anonymous | `{}` | Status & Region | Verifies backend connectivity and deployment environment |
-| `createJob` | `CONTRACTOR` | `CreateJobInput` | `{ jobId }` | Authoritatively validates parameters and creates an OPEN job |
-| `transitionJobStatus` | `CONTRACTOR` | `TransitionJobStatusInput` | `{ success }` | Enforces state machine transitions (COMPLETED, CANCELLED) |
-| `applyForJob` | `WORKER` | `ApplyForJobInput` | `{ applicationId }` | Verifies eligibility, composite ID, and creates PENDING application |
-| `acceptApplication` | `CONTRACTOR` | `AcceptApplicationInput` | `{ applicationId, jobStatus }` | Transactionally accepts worker and enforces capacity limits |
-| `rejectApplication` | `CONTRACTOR` | `RejectApplicationInput` | `{ success }` | Authoritatively rejects a PENDING application |
-| `withdrawApplication` | `WORKER` | `WithdrawApplicationInput` | `{ success }` | Allows worker to withdraw a PENDING application |
+| `setupAccountCapabilities` | Authenticated User | `SetupCapabilitiesInput` | `SetupCapabilitiesResult` | Authoritatively assigns worker/contractor capabilities and initializes zero profiles |
+| `createJob` | Contractor Capability | `CreateJobInput` | `{ jobId }` | Authoritatively validates parameters and creates an OPEN job |
+| `transitionJobStatus` | Contractor Capability | `TransitionJobStatusInput` | `{ success }` | Enforces state machine transitions (COMPLETED, CANCELLED) |
+| `applyForJob` | Worker Capability | `ApplyForJobInput` | `{ applicationId }` | Verifies eligibility, composite ID, and creates PENDING application |
+| `acceptApplication` | Contractor Capability | `AcceptApplicationInput` | `{ applicationId, jobStatus }` | Transactionally accepts worker and enforces capacity limits |
+| `rejectApplication` | Contractor Capability | `RejectApplicationInput` | `{ success }` | Authoritatively rejects a PENDING application |
+| `withdrawApplication` | Worker Capability | `WithdrawApplicationInput` | `{ success }` | Allows worker to withdraw a PENDING application |
 | `registerDeviceToken` | Authenticated User | `RegisterDeviceTokenInput` | `{ success }` | Registers or refreshes FCM device token under caller subcollection |
 | `unregisterDeviceToken` | Authenticated User | `UnregisterDeviceTokenInput` | `{ success }` | Removes FCM device token from caller subcollection upon logout |
+
+---
+
+### Authoritative Dual-Role Capability Architecture & Active Mode
+
+#### 1. Core Architectural Concept
+A single person can operate on Wrozo 2.0 under **ONE Firebase UID / account** holding both:
+- **Worker capability** (`capabilities.worker: true`): Enables finding jobs, submitting applications, and withdrawing applications.
+- **Contractor capability** (`capabilities.contractor: true`): Enables posting jobs, reviewing applicants, accepting/rejecting applications, and issuing payments.
+
+#### 2. Separation of Active Mode from Authorization
+- `activeMode` (`WORKER` | `CONTRACTOR`) is purely UI/UX presentation state.
+- **CRITICAL SECURITY INVARIANT:** `activeMode` is **NEVER** an authorization mechanism. Backend functions and Firestore security rules independently verify that the caller holds the required underlying capability, regardless of `activeMode`.
+- Switching `activeMode` does not alter capabilities, Firebase UID, profiles, jobs, applications, payments, or chat messages.
+
+#### 3. Zero Client-Side Capability Escalation
+- Clients cannot self-grant capabilities via Firestore SDK writes (`capabilities` is excluded from writable fields in `firestore.rules`).
+- Capabilities are assigned authoritatively via the trusted Cloud Function `setupAccountCapabilities` or Admin SDK.
+- `ADMIN` capability cannot be self-assigned under any circumstances.
+
+#### 4. Safe Migration & Backwards Compatibility
+- Existing accounts with legacy `role: 'WORKER'` or `role: 'CONTRACTOR'` continue functioning without modification.
+- Capability guards transparently fall back:
+  - `hasWorkerCapability(user) = capabilities.worker ?? (role == 'WORKER')`
+  - `hasContractorCapability(user) = capabilities.contractor ?? (role == 'CONTRACTOR')`
+- Zero data wiping, profile deletion, or history mutation.
 
 ### Firestore Background Triggers Catalog
 

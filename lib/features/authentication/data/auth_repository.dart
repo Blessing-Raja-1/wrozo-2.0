@@ -126,6 +126,78 @@ class AuthRepository {
     }
   }
 
+  /// Authoritative account onboarding for Worker, Contractor, or Both.
+  /// Dual-role users gain both capabilities under a single Firebase account and UID.
+  Future<void> setupCapabilities({
+    required bool worker,
+    required bool contractor,
+    String? activeMode,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("Not authenticated");
+
+    if (!worker && !contractor) {
+      throw ArgumentError("At least one capability must be selected.");
+    }
+
+    final mode = activeMode ?? (worker ? 'WORKER' : 'CONTRACTOR');
+
+    // For single-role selections, maintain full backwards compatibility with legacy role
+    final String legacyRole = (worker && contractor)
+        ? 'WORKER'
+        : (worker ? 'WORKER' : 'CONTRACTOR');
+
+    // Update user document with activeMode and legacy role
+    await _firestore.collection('users').doc(user.uid).update({
+      'role': legacyRole,
+      'activeMode': mode,
+    });
+
+    // Create required initial profiles with server-controlled zero metrics (SEC-03)
+    if (worker) {
+      final workerDoc = await _firestore.collection('worker_profiles').doc(user.uid).get();
+      if (!workerDoc.exists) {
+        await _firestore.collection('worker_profiles').doc(user.uid).set({
+          'rating': 0,
+          'reviewCount': 0,
+          'jobsCompleted': 0,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    if (contractor) {
+      final contractorDoc = await _firestore.collection('contractor_profiles').doc(user.uid).get();
+      if (!contractorDoc.exists) {
+        await _firestore.collection('contractor_profiles').doc(user.uid).set({
+          'rating': 0,
+          'reviewCount': 0,
+          'isVerified': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+  }
+
+  /// Switches user's current presentation mode between WORKER and CONTRACTOR.
+  /// This operation:
+  /// - Does NOT change authorization capabilities
+  /// - Does NOT change Firebase UID
+  /// - Does NOT delete profiles
+  /// - Does NOT alter job history, applications, payments, or chat identity
+  Future<void> switchActiveMode(String newMode) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("Not authenticated");
+
+    if (newMode != 'WORKER' && newMode != 'CONTRACTOR') {
+      throw ArgumentError("Invalid mode: only WORKER or CONTRACTOR permitted.");
+    }
+
+    await _firestore.collection('users').doc(user.uid).update({
+      'activeMode': newMode,
+    });
+  }
+
   Future<void> signOut() async {
     await _auth.signOut();
   }

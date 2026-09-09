@@ -35,8 +35,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         return isLoggingIn ? null : '/login';
       }
       
-      // Logged in, but role not selected -> Redirect to role selection
-      if (appUser.role == null) {
+      // Logged in, but role or capabilities not selected -> Redirect to role selection
+      if (!appUser.hasSetupRoles) {
         if (state.matchedLocation == '/role_selection') return null;
         return '/role_selection';
       }

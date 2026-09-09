@@ -16,12 +16,22 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appUser = ref.watch(appUserProvider).value;
-    final isWorker = appUser?.role == 'WORKER';
+    final isWorker = (appUser?.currentActiveMode ?? 'WORKER') == 'WORKER';
+    final isDualRole = appUser?.isDualRole ?? false;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(isWorker ? 'Worker Dashboard' : 'Contractor Dashboard'),
         actions: [
+          if (isDualRole)
+            IconButton(
+              icon: Icon(isWorker ? Icons.business : Icons.handyman),
+              tooltip: isWorker ? 'Switch to Contractor Mode' : 'Switch to Worker Mode',
+              onPressed: () {
+                final targetMode = isWorker ? 'CONTRACTOR' : 'WORKER';
+                ref.read(authControllerProvider.notifier).switchActiveMode(targetMode);
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
             tooltip: 'Messages',
@@ -57,41 +67,99 @@ class HomeScreen extends ConsumerWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
-                  child: Row(
+                  child: Column(
                     children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: AppColors.primaryLight,
-                        child: Icon(
-                          isWorker ? Icons.handyman : Icons.business,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isWorker ? 'Welcome, Worker!' : 'Welcome, Contractor!',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                              ),
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: AppColors.primaryLight,
+                            child: Icon(
+                              isWorker ? Icons.handyman : Icons.business,
+                              color: Colors.white,
+                              size: 28,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              appUser?.phone ?? 'Authenticated User',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textSecondary,
-                              ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isWorker ? 'Welcome, Worker!' : 'Welcome, Contractor!',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  appUser?.phone ?? 'Authenticated User',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
+                      if (isDualRole) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isWorker ? Icons.handyman : Icons.business,
+                                size: 18,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                isWorker ? 'Active: Worker' : 'Active: Contractor',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const Spacer(),
+                              InkWell(
+                                onTap: () {
+                                  final target = isWorker ? 'CONTRACTOR' : 'WORKER';
+                                  ref
+                                      .read(authControllerProvider.notifier)
+                                      .switchActiveMode(target);
+                                },
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.swap_horiz,
+                                        size: 16, color: AppColors.primary),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      isWorker ? 'Switch to Contractor' : 'Switch to Worker',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
