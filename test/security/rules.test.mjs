@@ -910,3 +910,231 @@ describe('Group G: Device Token Security (SEC-FCM)', () => {
     }));
   });
 });
+
+describe('Group H: Profile Privacy & Anti-Scraping (SEC-PROFILE)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      // Seed public worker profile
+      await adminDb.collection('worker_profiles').doc('worker1').set({
+        name: 'Alice Worker',
+        skills: ['Plumbing', 'Carpentry'],
+        expectedWage: 800,
+        isAvailable: true,
+        rating: 0,
+        reviewCount: 0,
+        jobsCompleted: 0,
+        createdAt: new Date(),
+      });
+      // Seed private worker subcollection
+      await adminDb.collection('worker_profiles').doc('worker1').collection('private').doc('contact').set({
+        phone: '+919876543210',
+        email: 'alice@example.com',
+        aadhaar: 'XXXX-XXXX-1234',
+        emergencyContact: '+919876543211',
+      });
+
+      // Seed public contractor profile
+      await adminDb.collection('contractor_profiles').doc('contractor1').set({
+        name: 'Bob Contractor',
+        companyName: 'Bob Builds Ltd',
+        isVerified: false,
+        rating: 0,
+        reviewCount: 0,
+        createdAt: new Date(),
+      });
+      // Seed private contractor subcollection
+      await adminDb.collection('contractor_profiles').doc('contractor1').collection('private').doc('contact').set({
+        phone: '+919123456780',
+        email: 'bob@example.com',
+        gstin: '29ABCDE1234F1Z5',
+        bankAccount: '1234567890',
+      });
+    });
+  });
+
+  test('H1: owner can read own public worker profile and private subcollection', async () => {
+    const dbWorker1 = testEnv.authenticatedContext('worker1').firestore();
+    const publicDoc = await assertSucceeds(dbWorker1.collection('worker_profiles').doc('worker1').get());
+    assert.equal(publicDoc.data().name, 'Alice Worker');
+    const privateDoc = await assertSucceeds(
+      dbWorker1.collection('worker_profiles').doc('worker1').collection('private').doc('contact').get()
+    );
+    assert.equal(privateDoc.data().phone, '+919876543210');
+  });
+
+  test('H2: owner can write and update own private worker subcollection', async () => {
+    const dbWorker1 = testEnv.authenticatedContext('worker1').firestore();
+    await assertSucceeds(
+      dbWorker1.collection('worker_profiles').doc('worker1').collection('private').doc('contact').update({
+        emergencyContact: '+919999988888',
+      })
+    );
+  });
+
+  test('H3: owner can read own public contractor profile and private subcollection', async () => {
+    const dbContractor1 = testEnv.authenticatedContext('contractor1').firestore();
+    const publicDoc = await assertSucceeds(dbContractor1.collection('contractor_profiles').doc('contractor1').get());
+    assert.equal(publicDoc.data().companyName, 'Bob Builds Ltd');
+    const privateDoc = await assertSucceeds(
+      dbContractor1.collection('contractor_profiles').doc('contractor1').collection('private').doc('contact').get()
+    );
+    assert.equal(privateDoc.data().gstin, '29ABCDE1234F1Z5');
+  });
+
+  test('H4: owner can write and update own private contractor subcollection', async () => {
+    const dbContractor1 = testEnv.authenticatedContext('contractor1').firestore();
+    await assertSucceeds(
+      dbContractor1.collection('contractor_profiles').doc('contractor1').collection('private').doc('contact').update({
+        bankAccount: '9876543210',
+      })
+    );
+  });
+
+  test('H5: worker can read another workers public profile', async () => {
+    const dbWorker2 = testEnv.authenticatedContext('worker2').firestore();
+    const publicDoc = await assertSucceeds(dbWorker2.collection('worker_profiles').doc('worker1').get());
+    assert.equal(publicDoc.data().name, 'Alice Worker');
+  });
+
+  test('H6: worker cannot read another workers private subcollection', async () => {
+    const dbWorker2 = testEnv.authenticatedContext('worker2').firestore();
+    await assertFails(
+      dbWorker2.collection('worker_profiles').doc('worker1').collection('private').doc('contact').get()
+    );
+  });
+
+  test('H7: worker cannot write or tamper with another workers private subcollection', async () => {
+    const dbWorker2 = testEnv.authenticatedContext('worker2').firestore();
+    await assertFails(
+      dbWorker2.collection('worker_profiles').doc('worker1').collection('private').doc('contact').set({
+        phone: '+910000000000',
+      })
+    );
+  });
+
+  test('H8: contractor can read another contractors public profile', async () => {
+    const dbContractor2 = testEnv.authenticatedContext('contractor2').firestore();
+    const publicDoc = await assertSucceeds(dbContractor2.collection('contractor_profiles').doc('contractor1').get());
+    assert.equal(publicDoc.data().companyName, 'Bob Builds Ltd');
+  });
+
+  test('H9: contractor cannot read another contractors private subcollection', async () => {
+    const dbContractor2 = testEnv.authenticatedContext('contractor2').firestore();
+    await assertFails(
+      dbContractor2.collection('contractor_profiles').doc('contractor1').collection('private').doc('contact').get()
+    );
+  });
+
+  test('H10: contractor cannot write or tamper with another contractors private subcollection', async () => {
+    const dbContractor2 = testEnv.authenticatedContext('contractor2').firestore();
+    await assertFails(
+      dbContractor2.collection('contractor_profiles').doc('contractor1').collection('private').doc('contact').set({
+        gstin: 'FAKEGSTIN',
+      })
+    );
+  });
+
+  test('H11: contractor can read workers public profile (applicant review flow)', async () => {
+    const dbContractor1 = testEnv.authenticatedContext('contractor1').firestore();
+    const publicDoc = await assertSucceeds(dbContractor1.collection('worker_profiles').doc('worker1').get());
+    assert.equal(publicDoc.data().name, 'Alice Worker');
+  });
+
+  test('H12: contractor cannot read workers private subcollection', async () => {
+    const dbContractor1 = testEnv.authenticatedContext('contractor1').firestore();
+    await assertFails(
+      dbContractor1.collection('worker_profiles').doc('worker1').collection('private').doc('contact').get()
+    );
+  });
+
+  test('H13: worker can read contractors public profile (job details flow)', async () => {
+    const dbWorker1 = testEnv.authenticatedContext('worker1').firestore();
+    const publicDoc = await assertSucceeds(dbWorker1.collection('contractor_profiles').doc('contractor1').get());
+    assert.equal(publicDoc.data().companyName, 'Bob Builds Ltd');
+  });
+
+  test('H14: worker cannot read contractors private subcollection', async () => {
+    const dbWorker1 = testEnv.authenticatedContext('worker1').firestore();
+    await assertFails(
+      dbWorker1.collection('contractor_profiles').doc('contractor1').collection('private').doc('contact').get()
+    );
+  });
+
+  test('H15: unauthenticated user cannot read worker public profile', async () => {
+    const dbUnauth = testEnv.unauthenticatedContext().firestore();
+    await assertFails(dbUnauth.collection('worker_profiles').doc('worker1').get());
+  });
+
+  test('H16: unauthenticated user cannot read worker private subcollection', async () => {
+    const dbUnauth = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      dbUnauth.collection('worker_profiles').doc('worker1').collection('private').doc('contact').get()
+    );
+  });
+
+  test('H17: unauthenticated user cannot read contractor public profile', async () => {
+    const dbUnauth = testEnv.unauthenticatedContext().firestore();
+    await assertFails(dbUnauth.collection('contractor_profiles').doc('contractor1').get());
+  });
+
+  test('H18: unauthenticated user cannot read contractor private subcollection', async () => {
+    const dbUnauth = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      dbUnauth.collection('contractor_profiles').doc('contractor1').collection('private').doc('contact').get()
+    );
+  });
+
+  test('H19: worker cannot update another workers public profile', async () => {
+    const dbWorker2 = testEnv.authenticatedContext('worker2').firestore();
+    await assertFails(
+      dbWorker2.collection('worker_profiles').doc('worker1').update({
+        bio: 'Hacked bio',
+      })
+    );
+  });
+
+  test('H20: contractor cannot update another contractors public profile', async () => {
+    const dbContractor2 = testEnv.authenticatedContext('contractor2').firestore();
+    await assertFails(
+      dbContractor2.collection('contractor_profiles').doc('contractor1').update({
+        companyName: 'Hacked Company',
+      })
+    );
+  });
+
+  test('H21: user cannot delete own or another users public worker profile', async () => {
+    const dbWorker1 = testEnv.authenticatedContext('worker1').firestore();
+    const dbWorker2 = testEnv.authenticatedContext('worker2').firestore();
+    await assertFails(dbWorker1.collection('worker_profiles').doc('worker1').delete());
+    await assertFails(dbWorker2.collection('worker_profiles').doc('worker1').delete());
+  });
+
+  test('H22: user cannot delete own or another users public contractor profile', async () => {
+    const dbContractor1 = testEnv.authenticatedContext('contractor1').firestore();
+    const dbContractor2 = testEnv.authenticatedContext('contractor2').firestore();
+    await assertFails(dbContractor1.collection('contractor_profiles').doc('contractor1').delete());
+    await assertFails(dbContractor2.collection('contractor_profiles').doc('contractor1').delete());
+  });
+
+  test('H23: authenticated user cannot enumerate or scrape worker_profiles collection (anti-scraping)', async () => {
+    const dbWorker2 = testEnv.authenticatedContext('worker2').firestore();
+    const dbContractor1 = testEnv.authenticatedContext('contractor1').firestore();
+    await assertFails(dbWorker2.collection('worker_profiles').get());
+    await assertFails(dbContractor1.collection('worker_profiles').get());
+  });
+
+  test('H24: authenticated user cannot enumerate or scrape contractor_profiles collection (anti-scraping)', async () => {
+    const dbWorker1 = testEnv.authenticatedContext('worker1').firestore();
+    const dbContractor2 = testEnv.authenticatedContext('contractor2').firestore();
+    await assertFails(dbWorker1.collection('contractor_profiles').get());
+    await assertFails(dbContractor2.collection('contractor_profiles').get());
+  });
+
+  test('H25: collectionGroup query on private subcollection is denied', async () => {
+    const dbWorker1 = testEnv.authenticatedContext('worker1').firestore();
+    const dbContractor1 = testEnv.authenticatedContext('contractor1').firestore();
+    await assertFails(dbWorker1.collectionGroup('private').get());
+    await assertFails(dbContractor1.collectionGroup('private').get());
+  });
+});

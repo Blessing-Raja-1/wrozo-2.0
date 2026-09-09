@@ -52,4 +52,54 @@ class ProfileRepository {
       SetOptions(merge: true),
     );
   }
+
+  /// Streams owner-only private profile document (sensitive contact, KYC, bank info).
+  Stream<Map<String, dynamic>?> workerPrivateProfileChanges(String uid, {String docId = 'contact'}) {
+    return _firestore
+        .collection('worker_profiles')
+        .doc(uid)
+        .collection('private')
+        .doc(docId)
+        .snapshots()
+        .map((doc) => doc.exists ? doc.data() : null);
+  }
+
+  /// Updates owner-only private profile document.
+  Future<void> updateWorkerPrivateProfile(
+    String uid,
+    Map<String, dynamic> data, {
+    String docId = 'contact',
+  }) async {
+    await _firestore
+        .collection('worker_profiles')
+        .doc(uid)
+        .collection('private')
+        .doc(docId)
+        .set(data, SetOptions(merge: true));
+  }
+
+  /// Streams owner-only contractor private profile document.
+  Stream<Map<String, dynamic>?> contractorPrivateProfileChanges(String uid, {String docId = 'contact'}) {
+    return _firestore
+        .collection('contractor_profiles')
+        .doc(uid)
+        .collection('private')
+        .doc(docId)
+        .snapshots()
+        .map((doc) => doc.exists ? doc.data() : null);
+  }
+
+  /// Updates owner-only contractor private profile document.
+  Future<void> updateContractorPrivateProfile(
+    String uid,
+    Map<String, dynamic> data, {
+    String docId = 'contact',
+  }) async {
+    await _firestore
+        .collection('contractor_profiles')
+        .doc(uid)
+        .collection('private')
+        .doc(docId)
+        .set(data, SetOptions(merge: true));
+  }
 }

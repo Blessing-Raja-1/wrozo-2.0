@@ -110,7 +110,7 @@ The backend layer serves as the **authoritative trust boundary** for the applica
 
 ### 2. `worker_profiles/{userId}`
 - **Document ID:** Worker UID.
-- **Fields:**
+- **Fields (Public Marketplace Data):**
   - `name`: string
   - `skills`: string array
   - `expectedWage`: integer (daily wage in INR)
@@ -118,15 +118,31 @@ The backend layer serves as the **authoritative trust boundary** for the applica
   - `rating`: double (server-controlled, initialized to 0.0)
   - `reviewCount`: integer (server-controlled, initialized to 0)
   - `jobsCompleted`: integer (server-controlled, initialized to 0)
+  - `createdAt`: server timestamp
+- **Subcollection:** `worker_profiles/{userId}/private/{docId}`
+  - Owner-only sensitive data: phone, email, government ID (Aadhaar/PAN), emergency contact, internal notes.
+- **Rules:**
+  - `allow get: if isAuthenticated();` (single-document lookup by ID for hiring / applicant review)
+  - `allow list: if false;` (bulk enumeration and automated data scraping permanently blocked)
+  - `allow delete: if false;` (client profile deletion permanently blocked)
+  - Subcollection `/private/{docId}`: `allow read, write: if isOwner(userId);` (owner-only access; other users and collectionGroup queries denied)
 
 ### 3. `contractor_profiles/{userId}`
 - **Document ID:** Contractor UID.
-- **Fields:**
+- **Fields (Public Marketplace Data):**
   - `name`: string
   - `companyName`: string
   - `isVerified`: boolean (server-controlled, initialized to false)
   - `rating`: double (server-controlled, initialized to 0.0)
   - `reviewCount`: integer (server-controlled, initialized to 0)
+  - `createdAt`: server timestamp
+- **Subcollection:** `contractor_profiles/{userId}/private/{docId}`
+  - Owner-only sensitive data: phone, email, tax identifiers (GSTIN), bank details, internal notes.
+- **Rules:**
+  - `allow get: if isAuthenticated();` (single-document lookup by ID for job posting checks)
+  - `allow list: if false;` (bulk enumeration and automated data scraping permanently blocked)
+  - `allow delete: if false;` (client profile deletion permanently blocked)
+  - Subcollection `/private/{docId}`: `allow read, write: if isOwner(userId);` (owner-only access; other users and collectionGroup queries denied)
 
 ### 4. `jobs/{jobId}`
 - **Document ID:** Unique job ID.
@@ -477,7 +493,7 @@ Clients are strictly forbidden from initiating or specifying push notifications.
 
 - **Backend Unit Tests:** Run via `npm test` using Node.js built-in test runner (`node:test`, `node:assert`).
   - Covers auth guards, role checks, admin self-assignment blocking, error mapping, log sanitization, job finite-state machine, application workflows, Razorpay order creation, state machine transitions, webhook HMAC verification, token management, FCM multicast delivery, and chat sender exclusion (97/97 tests passing across 32 suites).
-- **Firestore Security Rules:** Verified against Firebase Local Emulator (`69/69 passing across 7 test groups`).
+- **Firestore Security Rules:** Verified against Firebase Local Emulator (`94/94 passing across 8 test groups`).
 - **Flutter Client Integration:** Verified via `flutter test` (`18/18 passing`).
 - **Static Analysis:** Verified via `flutter analyze --no-pub` (272 baseline issues, 0 new errors).
 - **Debug APK Build:** Verified via `flutter build apk --debug`.
@@ -486,7 +502,7 @@ Clients are strictly forbidden from initiating or specifying push notifications.
 
 ## 11. Current Limitations & Roadmap
 
-- **Status:** Backend foundation, TypeScript build system, authorization helpers, structured logging, safe error handling, authoritative job lifecycle finite-state machine, transactional application acceptance, authoritative Razorpay payment foundation (`createPaymentOrder`), timing-safe webhook HMAC-SHA256 verification (`handlePaymentWebhook`), idempotent event deduplication (`webhook_events/{eventId}`), secure FCM device token management (`device_tokens` subcollection), multicast push notifications service, and chat message triggers are fully implemented and verified.
+- **Status:** Backend foundation, TypeScript build system, authorization helpers, structured logging, safe error handling, authoritative job lifecycle finite-state machine, transactional application acceptance, authoritative Razorpay payment foundation (`createPaymentOrder`), timing-safe webhook HMAC-SHA256 verification (`handlePaymentWebhook`), idempotent event deduplication (`webhook_events/{eventId}`), secure FCM device token management (`device_tokens` subcollection), multicast push notifications service, chat message triggers, and profile privacy & anti-scraping hardening (`worker_profiles` and `contractor_profiles` single-document get, list denied, private subcollections owner-only) are fully implemented and verified.
 - **Pending Implementation / Verification:**
   1. Live Razorpay merchant account credentials provisioned in production Google Cloud Secret Manager (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`).
   2. Live webhook URL registration in Razorpay Merchant Dashboard pointing to `/handlePaymentWebhook`.

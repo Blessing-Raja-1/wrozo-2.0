@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Secure Firebase Cloud Messaging (FCM) Push Notifications Implemented (VERIFIED: 2026-09-09)
+- Profile Privacy & Anti-Scraping Hardened (VERIFIED: 2026-09-09)
 
 ## Current Objective
 - Provision live Razorpay merchant credentials in Secret Manager and verify live physical device push delivery (PLANNED / PARTIAL)
 
 ## Overall Status
-- Secure FCM Push Notifications implemented across Firebase Cloud Functions and Flutter client. Features device token subcollection management (`users/{userId}/device_tokens/{tokenId}`), client token registration/unregistration callables, multi-device registration support, automatic pruning of invalid/stale registration tokens (`messaging/invalid-registration-token`, `messaging/registration-token-not-registered`), authoritative server-side triggers across Application events (`applyForJob`, `acceptApplication`, `rejectApplication`, `withdrawApplication`), Job events (`transitionJobStatus` for `COMPLETED` and `CANCELLED`), Payment events (`CAPTURED`, `FAILED`, `REFUNDED`), and Chat background trigger (`onChatMessageCreated`) with strict sender exclusion and recipient resolution from parent conversation. Flutter client integration includes `firebase_messaging: ^16.6.0`, background messaging handler (`firebaseMessagingBackgroundHandler`), token sync on startup & token refresh listener, Android notification channel (`wrozo_default_channel`), and `POST_NOTIFICATIONS` permission. Client payment writes remain strictly blocked in Firestore rules. 97/97 backend unit tests pass across 32 suites (100%). 69/69 Firestore security rules emulator tests pass across 7 groups (100%). 18/18 Flutter tests pass (100%). 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`). Live physical device push delivery marked as PARTIAL (requires physical devices with active APNs/FCM tokens) (VERIFIED)
+- Profile privacy and anti-scraping hardened across Firestore security rules and Flutter repository. Single-document public profile retrieval enabled for legitimate marketplace interactions (`allow get: if isAuthenticated();`), while collection-wide listing and automated data scraping are permanently denied (`allow list: if false;`). Sensitive private data (phone, email, KYC/Aadhaar/GSTIN, bank details, emergency contacts) is isolated into owner-only subcollections (`/worker_profiles/{userId}/private/{docId}`, `/contractor_profiles/{userId}/private/{docId}`) accessible strictly by the authenticated owner (`allow read, write: if isOwner(userId);`). Client profile deletions are permanently denied (`allow delete: if false;`). Client payment writes remain strictly blocked in Firestore rules. 97/97 backend unit tests pass across 32 suites (100%). 94/94 Firestore security rules emulator tests pass across 8 test groups (100%, including 25 Group H tests). 18/18 Flutter tests pass (100%). 272 analyzer issues (baseline maintained, 0 new errors). Android debug APK builds cleanly (`build\app\outputs\flutter-apk\app-debug.apk`). Live physical device push delivery marked as PARTIAL (requires physical devices with active APNs/FCM tokens) (VERIFIED)
 
 
 ## Completed
@@ -158,14 +158,26 @@
     - Android notification channel `wrozo_default_channel` configuration.
     - Added `POST_NOTIFICATIONS` permission in `android/app/src/main/AndroidManifest.xml`.
     - Added 4 Flutter unit tests in `test/notifications/notification_service_test.dart` (18/18 Flutter tests passing).
+- **PROFILE-01 (Profile Privacy, Data Minimization & Anti-Scraping Hardening):**
+  - Separated profile data into public marketplace-safe documents and owner-only `private/` subcollections.
+  - Hardened Firestore rules for `worker_profiles/{userId}` and `contractor_profiles/{userId}`:
+    - `allow get: if isAuthenticated();`: permits single-document retrieval for legitimate marketplace flows (applicant review, job contractor verification).
+    - `allow list: if false;`: permanently blocks collection-wide enumeration, bulk querying, and automated data scraping.
+    - `allow delete: if false;`: permanently blocks client-side deletion of profiles.
+    - `match /private/{docId} { allow read, write: if isOwner(userId); }`: restricts private subcollections (phone, email, KYC/Aadhaar/GSTIN, bank details, emergency contacts) strictly to the authenticated owner.
+    - Preserved SEC-03 zero-metric starting constraints on creation.
+  - Updated `ProfileRepository` (`lib/features/profile/data/profile_repository.dart`):
+    - Added helper methods for owner private profile document streams and updates (`workerPrivateProfileChanges`, `updateWorkerPrivateProfile`, `contractorPrivateProfileChanges`, `updateContractorPrivateProfile`).
+    - Preserved existing public profile streams (`workerProfileChanges`, `contractorProfileChanges`) without breaking existing UI.
+  - Added 25 new executable security tests in `test/security/rules.test.mjs` (Group H: Profile Privacy & Anti-Scraping SEC-PROFILE), bringing the security rules suite to 94/94 tests passing across 8 test suites.
 - Executed verification commands:
   - `npm --prefix functions test`: 97/97 unit tests passed across 32 suites (VERIFIED)
   - `npm --prefix functions run build`: TypeScript compiled with 0 errors (VERIFIED)
-  - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 69/69 passed across 7 test groups (VERIFIED)
+  - `firebase emulators:exec --only firestore "node --test test/security/rules.test.mjs"`: 94/94 passed across 8 test groups (VERIFIED)
   - `flutter test`: 18/18 passed (VERIFIED)
   - `flutter analyze --no-pub`: 272 issues (baseline maintained, 0 new errors) (VERIFIED)
   - `git diff --check`: clean (0 whitespace errors) (VERIFIED)
-  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 84.1s (VERIFIED)
+  - `flutter build apk --debug`: Succeeded (`build\app\outputs\flutter-apk\app-debug.apk`) in 99.5s (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
@@ -192,22 +204,23 @@
 - **FIXED / MITIGATED:** Review Forgery & Tampering: `/reviews/{reviewId}` enforces composite ID (`${jobId}_${reviewerId}`), forbids self-reviews (`reviewerId != revieweeId`), enforces rating bounds (1 to 5), immutable, client delete denied; dynamically tested in emulator (9/9 tests passed) (VERIFIED)
 - **FIXED (CHAT-01):** Unauthorized chat creation & spoofing — conversation creation strictly gated on server-verified `ACCEPTED` job application (`/applications/{applicationId}`); participants immutable; `senderId` must match caller UID; messages immutable and client delete denied; non-empty text bounds (1–5000 chars) enforced; dynamically tested in emulator (17/17 chat tests passed) (VERIFIED)
 - **FIXED (SEC-FCM):** Device Token Tampering & Cross-User Access Blocked — `/users/{userId}/device_tokens/{tokenId}` enforced with `isOwner(userId)`; unauthenticated and cross-user token reads, writes, and deletes denied; dynamically tested in emulator (7/7 tests passed in Group G) (VERIFIED)
+- **FIXED (SEC-PROFILE):** Profile Data Scraping & Privacy Vulnerability Neutralized — Single-document lookup by ID permitted for legitimate marketplace flows (`allow get: if isAuthenticated()`); bulk collection enumeration and automated scraping blocked (`allow list: if false`); client profile deletion blocked (`allow delete: if false`); sensitive data (phone, KYC, tax, bank details) isolated into owner-only `/private/{docId}` subcollections (`allow read, write: if isOwner(userId)`); collectionGroup queries on private data denied; dynamically tested in emulator (25/25 tests passed in Group H) (VERIFIED)
 - **FIXED (SEC-AUDIT-01):** Secrets & Configuration Exposure Audit — Zero private keys, OAuth secrets, database passwords, or server-only credentials found across full codebase; `.gitignore` fortified with comprehensive ignore rules for `.env*`, keystores (`*.keystore`, `*.jks`, `key.properties`), certificates/keys (`*.pem`, `*.p12`, `*.pfx`, `*.key`, `*.crt`), and service accounts (`*service-account*.json`, `*credentials*.json`); standards documented in `docs/security/secrets-and-config.md` (VERIFIED)
 - **FIXED (MAPS-01):** Google Maps API Key Exposure Avoided — Key is injected from local-only untracked `local.properties` via Gradle manifest placeholder; never hardcoded in `AndroidManifest.xml` or Dart code (VERIFIED)
 - **FIXED (BACKEND-01):** Untrusted Client Vulnerability Neutralized — Firebase Cloud Functions foundation established in TypeScript on Node.js 20 LTS as the authoritative trusted server layer; zero client payment writes; Secret Manager bindings for payment secrets; strict role guards (VERIFIED)
 - **FIXED (LIFECYCLE-01):** Client Lifecycle Tampering Eliminated — Job state machine transitions and application acceptance capacity constraints enforced server-side; race conditions eliminated via transactional acceptance (VERIFIED)
 - **FIXED (RAZORPAY-01):** Authoritative Payment Foundation — Server-derived payment amounts (`wage * 100`), timing-safe cryptographic webhook HMAC-SHA256 signature verification, idempotent event deduplication (`webhook_events/{eventId}`), tamper/mismatch rejection, authoritative state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`), and zero client payment writes verified (VERIFIED)
-- **MEDIUM (OPEN):** Data Scraping Vulnerability: Worker and Contractor profiles are completely readable by any authenticated user without pagination or field filtering (VERIFIED)
 
 ## Testing Status
 - **Unit Coverage:** 100% of defined localization and rule unit tests passing (VERIFIED)
 - **Widget Coverage:** 100% of defined widget, navigation, and notification tests passing (18/18 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10] + `test/notifications/notification_service_test.dart` [4/4]) (VERIFIED)
 - **Integration Coverage:** 0% (0 tests) (VERIFIED)
-- **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 69/69 tests passed across 7 test suites) (VERIFIED)
+- **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 94/94 tests passed across 8 test suites) (VERIFIED)
 - **Backend Coverage:** 100% of defined backend unit tests passing (97/97 tests passed across auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, webhook cryptographic verification, device token management, notification dispatch, and chat recipient resolution) (VERIFIED)
-- **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (69/69 passed) (VERIFIED)
+- **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (94/94 passed) (VERIFIED)
 - **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed). 100% of server-side payment logic verified via backend unit tests (25/25 payment tests passed) (VERIFIED)
 - **FCM Token Security Coverage:** 100% of device token subcollection security rules verified via Firebase Local Emulator suite (7/7 token tests passed) (VERIFIED)
+- **Profile Privacy & Anti-Scraping Coverage:** 100% of profile privacy and anti-scraping rules verified via Firebase Local Emulator suite (25/25 tests passed in Group H) (VERIFIED)
 - **Chat Coverage:** 100% of chat security rules and lifecycle scenarios verified via Firebase Local Emulator suite (17/17 chat tests passed) (VERIFIED)
 - **Navigation Coverage:** 100% of role-based dashboard navigation paths tested and passing (3/3 tests passed) (VERIFIED)
 - **Localization Coverage:** 100% of supported locales (`en`, `hi`, `ta`, `te`, `mr`) and 40 key marketplace strings verified across unit and widget integration tests (10/10 tests passed) (VERIFIED)
@@ -218,6 +231,7 @@
 - **Routing:** GoRouter (`go_router: ^17.5.0`) (VERIFIED)
 - **Backend Services:** Firebase Core & Auth & Firestore & Messaging (VERIFIED)
 - **Backend Architecture:** Firebase Cloud Functions (Node.js 20 LTS, TypeScript 5, 2nd Gen API) as the authoritative trusted server layer; zero client payment writes; Secret Manager for payment secrets; strict role guards (VERIFIED)
+- **Profile Privacy Architecture:** Public marketplace profile documents with single-document `get` lookup, anti-scraping `list` denial, owner-only private subcollections (`/private/{docId}`) for sensitive PII/KYC/bank info, and client delete denial (VERIFIED)
 - **Push Notification Architecture:** Subcollection device token management (`/users/{userId}/device_tokens/{tokenId}`), client token registration/unregistration callables, multi-device support, auto-pruning dead tokens, server-side authoritative event dispatch only, and chat recipient derivation with sender exclusion (VERIFIED)
 - **Payment Architecture:** Server-side Razorpay order generation (`createPaymentOrder`), timing-safe cryptographic webhook HMAC-SHA256 signature verification (`handlePaymentWebhook`), idempotent replay protection (`webhook_events/{eventId}`), authoritative state machine (`CREATED` -> `AUTHORIZED` -> `CAPTURED`, `CREATED`/`AUTHORIZED` -> `FAILED`, `CAPTURED` -> `REFUNDED`), and authoritative amount derivation (VERIFIED)
 - **Job Lifecycle Architecture:** Authoritative state machine (`OPEN` -> `IN_PROGRESS` -> `COMPLETED`, `OPEN`/`IN_PROGRESS` -> `CANCELLED`); atomic transactional worker capacity enforcement; server-controlled `completedAt`/`cancelledAt` timestamps (VERIFIED)
@@ -243,10 +257,10 @@
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `feat: implement secure FCM notifications` (PENDING PUSH) (VERIFIED)
+- **Commit:** `security: harden profile privacy and access` (PENDING PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Implement secure Firebase Cloud Messaging (FCM) push notifications across backend Cloud Functions and Flutter client (device token subcollection management, server-side authoritative notification triggers, sender exclusion in chat, automatic pruning of dead tokens, 97/97 backend tests passed, 69/69 emulator rules tests passed, 18/18 Flutter tests passed, debug APK verified) (VERIFIED)
+- Harden profile privacy, data minimization, and anti-scraping protections across Firestore rules and Flutter repository (single-document public profile retrieval, bulk enumeration blocked, owner-only private subcollections, client delete denial, 94/94 emulator security rules tests passed, 97/97 backend tests passed, 18/18 Flutter tests passed, debug APK verified) (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
@@ -256,9 +270,10 @@
 
 ## Important Notes
 - Android debug APK build is fully verified and functioning (`build\app\outputs\flutter-apk\app-debug.apk`).
+- Profile privacy and anti-scraping protections are fully verified; bulk listing of worker and contractor profiles is permanently blocked; private subcollections are owner-gated.
 - Secure FCM push notifications foundation is fully implemented across Cloud Functions and Flutter client with multi-device token subcollections, dead token auto-pruning, and server-side authoritative event triggers.
 - Payment foundation is fully implemented with authoritative server-side order generation, timing-safe cryptographic webhook HMAC verification, and replay protection. Client-side payment writes are permanently blocked in Firestore rules.
-- Firestore security rules are dynamically tested and verified against the Firebase Local Emulator with 69 automated unit tests passing across all 7 security boundaries.
+- Firestore security rules are dynamically tested and verified against the Firebase Local Emulator with 94 automated unit tests passing across all 8 security boundaries.
 - Backend unit test suite contains 97 tests across 32 suites with 100% pass rate.
 - Role-based dashboard navigation is verified with 4/4 passing tests; workers and contractors have clean, segregated access to all feature screens.
 - Full 5-language localization foundation (`en`, `hi`, `ta`, `te`, `mr`) is active and verified; `AppLocalizations` delegates and supported locales are wired into `main.dart`.
