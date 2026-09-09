@@ -44,6 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 **/android/local.properties
+.kotlin/
+**/android/.kotlin/
 
 # Node / Firebase Functions & Emulator testing
 node_modules/

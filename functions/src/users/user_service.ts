@@ -2,6 +2,7 @@ import { db } from "../config/firebase";
 import { requireAdmin, requireAuth, assertNotAdminSelfAssignment, AuthContext } from "../auth/auth_helpers";
 import { ValidationError, NotFoundError, ForbiddenError } from "../shared/errors";
 import { logger } from "../shared/logger";
+import { verifyAppCheck, logAppCheckStatus } from "../security/app_check";
 import { UserRole, UserStatus, AppUserRecord } from "../shared/types";
 
 /**
@@ -109,6 +110,9 @@ export const userService = {
     context: AuthContext | undefined,
     input: SetupCapabilitiesInput
   ): Promise<SetupCapabilitiesResult> {
+    verifyAppCheck(context);
+    logAppCheckStatus("setupAccountCapabilities", context);
+
     const uid = requireAuth(context);
 
     if (!input || !input.capabilities || typeof input.capabilities !== "object") {

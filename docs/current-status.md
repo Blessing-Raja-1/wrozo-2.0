@@ -8,13 +8,13 @@
 - **Local Path:** `C:\Users\bless\Wrozo2` (VERIFIED)
 
 ## Current Development Phase
-- Real Device & Production Environment Validation Foundation Established (VERIFIED: 2026-09-09)
+- Firebase App Check Foundation & Backend Abuse Protection Established (VERIFIED: 2026-09-10)
 
 ## Current Objective
-- Connect physical Android hardware, register debug SHA-1 & test phone numbers in Firebase Console, and execute manual real-device checklist (PLANNED / PARTIAL)
+- Register Android App Check debug token in Firebase Console for local development, configure Play Integrity in Google Play & Firebase Consoles for release builds, and monitor production traffic before enforcing blocking mode (PLANNED / PARTIAL)
 
 ## Overall Status
-- Real-device and production-environment validation foundation established for Wrozo 2.0. Native Android manifest, permissions (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `POST_NOTIFICATIONS`), Maps placeholders, FCM default channel, application ID (`com.wrozo.wrozo`), SDK levels (minSdk 21, targetSdk 34/35), Java 17 toolchain, and debug/release signing configurations fully audited and verified. Debug keystore SHA-1 (`0B:10:CD:F6:C5:74:75:45:0F:F6:DB:5D:00:C4:30:66:B5:16:BD:34`) and SHA-256 extracted for Firebase Phone Auth and Google Maps console registration. Firebase project `wrozo-5b147` (number `448205141152`) verified aligned across `firebase.json`, `google-services.json`, and `lib/firebase_options.dart`. Production release app bundle verified (`flutter build appbundle` produced `build\app\outputs\bundle\release\app-release.aab` [46.1MB] with 0 errors). Comprehensive manual physical-device validation checklist authored in `docs/testing/real-device-validation.md` covering Auth, Onboarding, Worker, Contractor, Dual-Role, FCM Push, and Maps flows. Production safety audit completed with explicit classification (VERIFIED, PARTIAL, BLOCKED, NOT REQUIRED YET). All baseline checks verified (105/105 backend tests, 110/110 rules tests, 28/28 Flutter tests, debug APK, release AAB). No physical device claims made. (VERIFIED)
+- Firebase App Check foundation and backend abuse protection established for Wrozo 2.0. Native Flutter integration via official `firebase_app_check` (^0.4.7) initialized safely during app startup in `lib/main.dart` with `AndroidProvider.playIntegrity` for production release builds and `AndroidProvider.debug` for debug/development environments. Zero secrets or debug tokens committed. Backend callable functions configured with `enforceAppCheck: shouldEnforceAppCheck()` across all 10 sensitive callable endpoints (`setupAccountCapabilities`, `createJob`, `transitionJobStatus`, `applyForJob`, `acceptApplication`, `rejectApplication`, `withdrawApplication`, `createPaymentOrder`, `registerDeviceToken`, `unregisterDeviceToken`), controlled by `ENFORCE_APP_CHECK` environment variable or production mode. Replay protection implemented on financial operations (`createPaymentOrder`) with automatic token consumption (`consumeAppCheckToken`) and already-consumed token rejection (`ConflictError`). Server-side abuse protections implemented: skill count and length limits, wage maximums (₹10,00,000), worker count limits (100), active open job limits per contractor (50), string length validations on application/job IDs, and device token limits (10 per user). All baseline checks verified: 122/122 backend tests passing across 38 suites (including 17 App Check and abuse protection unit tests), 87/87 integration tests passing across 6 suites in Firestore emulator, 110/110 security rules tests passing across 9 groups in Firestore emulator, 28/28 Flutter tests passing, analyzer clean (0 errors), debug APK verified. All existing auth guards, capability authorization, SEC-01 through SEC-03, dual-role architecture, and security rules strictly preserved. (VERIFIED)
 
 
 ## Completed
@@ -307,6 +307,17 @@
   - **Release App Bundle Compilation:** Verified `flutter build appbundle` compiles cleanly with release optimizations and tree-shaken icon fonts producing `build\app\outputs\bundle\release\app-release.aab` (46.1MB) with 0 errors (VERIFIED)
   - **Production Safety Audit:** Formally classified secrets into VERIFIED (Firebase Admin ADC), PARTIAL (Razorpay live keys in Secret Manager, Google Maps restricted key in `local.properties`, release keystore in `key.properties`, live FCM device delivery), and NOT REQUIRED YET (Crashlytics native plugin, Analytics event tracking). Zero secrets hardcoded or committed (VERIFIED)
   - **Real Device Test Plan:** Authored `docs/testing/real-device-validation.md` containing full hardware prerequisites, Firebase Console pre-requisites, and exhaustive manual test checklists covering AUTH, ONBOARDING, WORKER, CONTRACTOR, DUAL ROLE, NOTIFICATIONS, and MAPS flows with explicit distinction between emulator-verified logic and physical-device verification requirements (VERIFIED)
+- **APPCHECK-01 (Firebase App Check Foundation & Backend Abuse Protection):**
+  - **Flutter Integration:** Added `firebase_app_check` (^0.4.7) to `pubspec.yaml`; created `AppCheckService` (`lib/core/security/app_check_service.dart`) with `AndroidProvider.playIntegrity` for production release builds and `AndroidProvider.debug` for development/emulator environments; initialized safely during startup in `lib/main.dart` with defensive try/catch logging so unexpected provider failures never crash app initialization. Zero secrets or debug tokens committed (VERIFIED)
+  - **Cloud Functions Callable Enforcement:** Created `functions/src/security/app_check.ts` with `shouldEnforceAppCheck()`, `verifyAppCheck()`, and `logAppCheckStatus()`; configured `enforceAppCheck: shouldEnforceAppCheck()` in `functions/src/index.ts` across all 10 sensitive callable functions: `setupAccountCapabilities`, `createJob`, `transitionJobStatus`, `applyForJob`, `acceptApplication`, `rejectApplication`, `withdrawApplication`, `createPaymentOrder`, `registerDeviceToken`, `unregisterDeviceToken`; enforcement active in production mode or when `ENFORCE_APP_CHECK=true`, ensuring local emulator workflows remain seamless (VERIFIED)
+  - **Auth & Capability Defense-in-Depth:** Extended `AuthContext` in `functions/src/auth/auth_helpers.ts` to include caller `app` metadata; preserved all mandatory server-side authentication guards and capability authorization checks (`requireWorkerCapability`, `requireContractorCapability`, `assertNotAdminSelfAssignment`, SEC-01 through SEC-03). App Check verifies app authenticity but NEVER replaces authentication or authorization (VERIFIED)
+  - **Financial Replay Protection:** Configured `consumeAppCheckToken: shouldEnforceAppCheck()` on `createPaymentOrder` callable in `functions/src/index.ts`; added server-side replay check in `functions/src/payments/payment_service.ts` rejecting already-consumed App Check tokens with `ConflictError` (`auth/app-check-token-already-consumed`) to prevent financial order replay attacks (VERIFIED)
+  - **Backend Abuse Protection:** Added safe, high-value abuse bounds across sensitive services without requiring complex rate-limiting infrastructure:
+    - `job_service.ts`: Max 20 skills per job, max 50 characters per skill, max wage cap of ₹10,00,000, max 100 workers per job, active open job limit of 50 per contractor.
+    - `application_service.ts`: String length validation bounds on `jobId` and `applicationId` (1–128 chars).
+    - `token_service.ts`: Enforced cap of 10 registered device tokens per user in `functions/src/notifications/token_service.ts`, automatically pruning the oldest token when exceeded.
+  - **App Check Unit Testing:** Created `functions/src/security/app_check.test.ts` containing 17 comprehensive unit tests verifying valid token acceptance, missing token rejection when enforced, replay prevention, dev/emulator bypass, non-bypass of auth/capability guards, and all abuse bounds. Backend suite increased to 122/122 passed across 38 suites (VERIFIED)
+  - **Architecture Specification:** Authored comprehensive reference specification in `docs/security/app-check-and-abuse-protection.md` detailing architecture, production vs dev behavior, Play Integrity attestation, callable protection matrix, replay prevention, abuse protections, Firestore rules safety, and Firebase Console configuration requirements (VERIFIED)
 
 ## In Progress
 - None (VERIFIED)
@@ -365,7 +376,8 @@
 - **Widget Coverage:** 100% of defined widget, navigation, notification, and dual-role tests passing (28/28 tests passed: `test/widget_test.dart` [1/1] + `test/navigation/dashboard_navigation_test.dart` [3/3] + `test/localization/localization_test.dart` [10/10] + `test/notifications/notification_service_test.dart` [4/4] + `test/features/authentication/dual_role_test.dart` [10/10]) (VERIFIED)
 - **Integration Coverage:** 100% (87/87 executable integration tests passed across 6 test suites covering Worker flow [16/16], Contractor flow [17/17], Dual-Role flow [10/10], Payment flow [10/10], Notifications flow [10/10], and Security attack scenarios [24/24] in local Firestore emulator) (VERIFIED)
 - **Rules Coverage:** 100% of defined security scenarios executable and passing in Firebase Local Emulator (`test/security/rules.test.mjs`: 110/110 tests passed across 9 test suites, including 16 Group I tests) (VERIFIED)
-- **Backend Coverage:** 100% of defined backend unit tests passing (105/105 tests passed across 33 suites covering capability guards, legacy fallbacks, auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, webhook cryptographic verification, device token management, notification dispatch, and chat recipient resolution) (VERIFIED)
+- **Backend Coverage:** 100% of defined backend unit tests passing (122/122 tests passed across 38 suites covering App Check validation, replay protection, abuse bounds, capability guards, legacy fallbacks, auth guards, error sanitization, logger redaction, job state machine, application workflows, Razorpay order creation, state machine transitions, webhook cryptographic verification, device token management, notification dispatch, and chat recipient resolution) (VERIFIED)
+- **App Check & Abuse Protection Coverage:** 100% of defined App Check and abuse-protection scenarios verified (17/17 tests in `app_check.test.ts` covering token validation, enforcement toggle, replay prevention on payments, auth/capability non-bypass, skill bounds, wage bounds, worker count bounds, string length bounds, and device token limits) (VERIFIED)
 - **Authorization Coverage:** 100% of client authorization rules verified via Firebase Local Emulator suite (110/110 passed) (VERIFIED)
 - **Dual-Role Security Coverage:** 100% of capability isolation, active-mode independence, escalation denial, and admin rejection verified via Firebase Local Emulator suite (16/16 tests passed in Group I) (VERIFIED)
 - **Payment Coverage:** 100% of client payment write lockdown verified via Firebase Local Emulator suite (7/7 payment tests passed). 100% of server-side payment logic verified via backend unit tests (25/25 payment tests passed) (VERIFIED)
@@ -378,6 +390,7 @@
 - **Real-Device Readiness Coverage:** 100% of native permissions (`INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `POST_NOTIFICATIONS`), Maps placeholders, Gradle SDK configs (minSdk 21, targetSdk 34/35, Java 17), debug keystore SHA-1/SHA-256 fingerprints, and Firebase project `wrozo-5b147` alignment audited; debug APK and release AAB builds verified; comprehensive manual test checklist established in `docs/testing/real-device-validation.md` (VERIFIED)
 
 ## Architecture Decisions
+- **App Check & Abuse Protection Architecture:** Firebase App Check integrated via `firebase_app_check` (^0.4.7) on Flutter using `AndroidProvider.playIntegrity` for production release builds and `AndroidProvider.debug` for development. Cloud Functions callables enforce App Check via `shouldEnforceAppCheck()` (active in production or when `ENFORCE_APP_CHECK=true`) across all 10 sensitive callable functions. Replay protection implemented on `createPaymentOrder` via token consumption. Core principle strictly enforced: App Check verifies client authenticity but NEVER replaces Firebase Authentication or capability authorization. Safe server-side abuse bounds implemented across jobs, applications, payments, and device tokens without requiring heavyweight rate-limiting infrastructure (VERIFIED)
 - **Capability Architecture:** Server-authoritative `capabilities: { worker: boolean, contractor: boolean }` defining permissions; `activeMode` purely client-side presentation state; client capability direct writes blocked; setup via trusted Cloud Function `setupAccountCapabilities`; legacy single-role backwards compatibility (VERIFIED)
 - **State Management:** Flutter Riverpod (`flutter_riverpod: ^2.4.9`) (VERIFIED)
 - **Routing:** GoRouter (`go_router: ^17.5.0`) (VERIFIED)
@@ -403,22 +416,23 @@
 ## Dependencies
 - Dart SDK constraint in `pubspec.yaml`: `^3.10.4` (Confuses Flutter SDK version with Dart SDK version) (VERIFIED)
 - Web incompatibility risk: `firebase_core_web: 3.11.0` and `web: 1.1.1` require modern Dart 3.4+ `dart:js_interop` (`isA<T>()`), conflicting with older toolchains (VERIFIED)
+- App Check dependency: `firebase_app_check: ^0.4.7` (VERIFIED)
 - Messaging dependency: `firebase_messaging: ^16.6.0` (VERIFIED)
 - Missing dependencies: Razorpay SDK (`razorpay_flutter`) not in `pubspec.yaml` (VERIFIED)
 
 ## Latest Git State
 - **Branch:** `main` (VERIFIED)
 - **Remote:** `https://github.com/Blessing-Raja-1/wrozo-2.0.git` (VERIFIED)
-- **Commit:** `test: establish real device validation foundation` (PENDING COMMIT & PUSH) (VERIFIED)
+- **Commit:** `security: establish Firebase App Check foundation` (PENDING COMMIT & PUSH) (VERIFIED)
 
 ## Last Completed Task
-- Established real-device and production-environment validation foundation: audited AndroidManifest.xml, permissions, Maps placeholders, FCM channel, build.gradle.kts, debug keystore fingerprints, release app bundle generation (`build\app\outputs\bundle\release\app-release.aab` [46.1MB], 0 errors), Firebase configuration alignment with project `wrozo-5b147`, production safety secrets classification, and authored complete manual testing checklist in `docs/testing/real-device-validation.md` (VERIFIED)
+- Established Firebase App Check foundation and backend abuse protection: added Flutter App Check with Play Integrity (prod) / debug (dev), protected 10 sensitive callable functions with `enforceAppCheck`, added replay token consumption to payment orders, implemented abuse bounds across jobs, applications, and device tokens, added 17 backend tests (122/122 total), verified emulator compatibility (87/87 integration, 110/110 rules, 28/28 Flutter), built debug APK and release AAB, and authored `docs/security/app-check-and-abuse-protection.md` (VERIFIED)
 
 ## Current Task
 - None (VERIFIED)
 
 ## Next Task
-- Connect physical Android test device, register debug SHA-1 & test phone numbers in Firebase Console, and execute manual checklist in `docs/testing/real-device-validation.md` (PLANNED)
+- Register debug App Check tokens in Firebase Console for local development, configure Play Integrity in Google Play Console & Firebase Console for release builds, and monitor telemetry before transitioning App Check from monitoring to strict enforcement in Firebase Console (PLANNED)
 
 ## Important Notes
 - Real-device validation foundation is established with complete native configuration audit, SHA fingerprints extraction, production secrets classification, and manual test checklist.

@@ -10,6 +10,11 @@ export interface AuthContext {
     uid: string;
     token?: Record<string, unknown>;
   };
+  app?: {
+    token: Record<string, unknown>;
+    alreadyConsumed?: boolean;
+  };
+  rawRequest?: unknown;
 }
 
 /**

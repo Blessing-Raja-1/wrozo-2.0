@@ -29,6 +29,7 @@ import {
   verifyRazorpayWebhookSignature,
 } from "./razorpay_gateway";
 import { notificationService } from "../notifications/notification_service";
+import { verifyAppCheck, logAppCheckStatus } from "../security/app_check";
 
 /**
  * Authoritative Payment State Machine
@@ -109,11 +110,15 @@ class PaymentService {
    * 6. Client amount hints are never trusted.
    * 7. Duplicate payments for captured work are strictly blocked.
    * 8. Active orders in CREATED status are reused idempotently.
+   * 9. App Check replay protection rejects already-consumed tokens.
    */
   async createPaymentOrder(
     context: AuthContext | undefined,
     input: CreatePaymentOrderInput
   ): Promise<PaymentOrderResult> {
+    verifyAppCheck(context, { rejectReplay: true });
+    logAppCheckStatus("createPaymentOrder", context);
+
     const { uid: contractorUid } = await requireContractor(context);
 
     if (!input || !input.jobId || typeof input.jobId !== "string" || input.jobId.trim() === "") {
@@ -126,6 +131,10 @@ class PaymentService {
 
     const trimmedJobId = input.jobId.trim();
     const trimmedWorkerId = input.workerId.trim();
+
+    if (trimmedJobId.length > 100 || trimmedWorkerId.length > 100) {
+      throw new ValidationError("Identifiers exceed maximum allowable length.");
+    }
 
     // 1. Validate Job Existence, Ownership, and State
     const jobDoc = await db.collection("jobs").doc(trimmedJobId).get();

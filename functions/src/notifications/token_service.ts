@@ -3,6 +3,7 @@ import { db } from "../config/firebase";
 import { requireAuth, AuthContext } from "../auth/auth_helpers";
 import { ValidationError } from "../shared/errors";
 import { logger } from "../shared/logger";
+import { verifyAppCheck, logAppCheckStatus } from "../security/app_check";
 import {
   DeviceTokenRecord,
   RegisterDeviceTokenInput,
@@ -34,6 +35,9 @@ export const tokenService = {
     context: AuthContext | undefined,
     input: RegisterDeviceTokenInput
   ): Promise<{ success: boolean; docId: string }> {
+    verifyAppCheck(context);
+    logAppCheckStatus("registerDeviceToken", context);
+
     const callerUid = requireAuth(context);
 
     if (!input || !input.token || typeof input.token !== "string" || input.token.trim() === "") {
@@ -69,7 +73,31 @@ export const tokenService = {
       updatedAt: now,
     };
 
+    // Abuse Prevention: Cap active device tokens at 10 per user account
+    const existingTokensSnap = await db
+      .collection("users")
+      .doc(callerUid)
+      .collection("device_tokens")
+      .get();
+
     const batch = db.batch();
+
+    if (
+      existingTokensSnap.size >= 10 &&
+      !existingTokensSnap.docs.some((d) => d.id === docId)
+    ) {
+      const oldestDoc = existingTokensSnap.docs.sort((a, b) => {
+        const aTime = a.data().createdAt?.toMillis?.() ?? 0;
+        const bTime = b.data().createdAt?.toMillis?.() ?? 0;
+        return aTime - bTime;
+      })[0];
+      if (oldestDoc) {
+        batch.delete(oldestDoc.ref);
+        batch.update(userRef, {
+          fcmTokens: FieldValue.arrayRemove(oldestDoc.data().token),
+        });
+      }
+    }
     batch.set(tokenRef, tokenRecord, { merge: true });
     batch.update(userRef, {
       fcmTokens: FieldValue.arrayUnion(token),
@@ -94,6 +122,9 @@ export const tokenService = {
     context: AuthContext | undefined,
     input: UnregisterDeviceTokenInput
   ): Promise<{ success: boolean }> {
+    verifyAppCheck(context);
+    logAppCheckStatus("unregisterDeviceToken", context);
+
     const callerUid = requireAuth(context);
 
     if (!input || !input.token || typeof input.token !== "string" || input.token.trim() === "") {

@@ -4,6 +4,7 @@ import { requireContractor, requireWorker, AuthContext } from "../auth/auth_help
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from "../shared/errors";
 import { logger } from "../shared/logger";
 import { notificationService } from "../notifications/notification_service";
+import { verifyAppCheck, logAppCheckStatus } from "../security/app_check";
 import {
   ApplicationRecord,
   JobRecord,
@@ -22,11 +23,17 @@ export const applicationService = {
     context: AuthContext | undefined,
     input: ApplyForJobInput
   ): Promise<{ applicationId: string }> {
+    verifyAppCheck(context);
+    logAppCheckStatus("applyForJob", context);
+
     const { uid: workerUid } = await requireWorker(context);
 
     const jobId = input.jobId?.trim();
     if (!jobId) {
       throw new ValidationError("jobId is required to apply for a job.");
+    }
+    if (jobId.length > 100) {
+      throw new ValidationError("jobId exceeds maximum allowable length.");
     }
 
     const jobRef = db.collection("jobs").doc(jobId);
@@ -102,11 +109,17 @@ export const applicationService = {
     context: AuthContext | undefined,
     input: AcceptApplicationInput
   ): Promise<{ applicationId: string; jobStatus: JobStatus }> {
+    verifyAppCheck(context);
+    logAppCheckStatus("acceptApplication", context);
+
     const { uid: contractorUid } = await requireContractor(context);
 
     const applicationId = input.applicationId?.trim();
     if (!applicationId) {
       throw new ValidationError("applicationId is required.");
+    }
+    if (applicationId.length > 150) {
+      throw new ValidationError("applicationId exceeds maximum allowable length.");
     }
 
     const appRef = db.collection("applications").doc(applicationId);
@@ -219,11 +232,20 @@ export const applicationService = {
     context: AuthContext | undefined,
     input: RejectApplicationInput
   ): Promise<void> {
+    verifyAppCheck(context);
+    logAppCheckStatus("rejectApplication", context);
+
     const { uid: contractorUid } = await requireContractor(context);
 
     const applicationId = input.applicationId?.trim();
     if (!applicationId) {
       throw new ValidationError("applicationId is required.");
+    }
+    if (applicationId.length > 150) {
+      throw new ValidationError("applicationId exceeds maximum allowable length.");
+    }
+    if (input.reason && input.reason.length > 500) {
+      throw new ValidationError("Rejection reason cannot exceed 500 characters.");
     }
 
     const appRef = db.collection("applications").doc(applicationId);
@@ -284,11 +306,17 @@ export const applicationService = {
     context: AuthContext | undefined,
     input: WithdrawApplicationInput
   ): Promise<void> {
+    verifyAppCheck(context);
+    logAppCheckStatus("withdrawApplication", context);
+
     const { uid: workerUid } = await requireWorker(context);
 
     const applicationId = input.applicationId?.trim();
     if (!applicationId) {
       throw new ValidationError("applicationId is required.");
+    }
+    if (applicationId.length > 150) {
+      throw new ValidationError("applicationId exceeds maximum allowable length.");
     }
 
     const appRef = db.collection("applications").doc(applicationId);

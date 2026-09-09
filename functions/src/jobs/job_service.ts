@@ -4,6 +4,7 @@ import { requireContractor, AuthContext } from "../auth/auth_helpers";
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from "../shared/errors";
 import { logger } from "../shared/logger";
 import { notificationService } from "../notifications/notification_service";
+import { verifyAppCheck, logAppCheckStatus } from "../security/app_check";
 import { JobRecord, JobStatus, CreateJobInput, TransitionJobStatusInput } from "../shared/types";
 
 /**
@@ -31,6 +32,9 @@ export const jobService = {
     context: AuthContext | undefined,
     input: CreateJobInput
   ): Promise<{ jobId: string }> {
+    verifyAppCheck(context);
+    logAppCheckStatus("createJob", context);
+
     const { uid: contractorUid } = await requireContractor(context);
 
     // Validate title
@@ -55,17 +59,42 @@ export const jobService = {
     if (skillsRequired.length === 0) {
       throw new ValidationError("Skills required cannot contain only empty strings.");
     }
+    if (skillsRequired.length > 20) {
+      throw new ValidationError("Skills required cannot exceed 20 items.");
+    }
+    if (skillsRequired.some((s) => s.length > 50)) {
+      throw new ValidationError("Each required skill cannot exceed 50 characters.");
+    }
 
     // Validate wage (INR positive integer)
     const wage = Math.floor(Number(input.wage));
     if (isNaN(wage) || wage <= 0) {
       throw new ValidationError("Job wage must be a positive integer amount in INR.");
     }
+    if (wage > 1_000_000) {
+      throw new ValidationError("Job wage exceeds maximum allowable limit (₹10,00,000).");
+    }
 
     // Validate worker count needed
     const workerCountNeeded = Math.floor(Number(input.workerCountNeeded));
     if (isNaN(workerCountNeeded) || workerCountNeeded < 1) {
       throw new ValidationError("workerCountNeeded must be at least 1.");
+    }
+    if (workerCountNeeded > 100) {
+      throw new ValidationError("workerCountNeeded cannot exceed 100 workers per job.");
+    }
+
+    // Abuse Prevention: Cap simultaneous OPEN jobs per contractor to prevent spamming
+    const activeJobsSnap = await db
+      .collection("jobs")
+      .where("contractorId", "==", contractorUid)
+      .where("status", "==", "OPEN")
+      .limit(51)
+      .get();
+    if (activeJobsSnap.size >= 50) {
+      throw new ConflictError(
+        "Active open job limit reached (50). Please complete or cancel existing jobs before posting new ones."
+      );
     }
 
     // Optional GeoPoint location
@@ -116,6 +145,9 @@ export const jobService = {
     context: AuthContext | undefined,
     input: TransitionJobStatusInput
   ): Promise<void> {
+    verifyAppCheck(context);
+    logAppCheckStatus("transitionJobStatus", context);
+
     const { uid: contractorUid } = await requireContractor(context);
 
     if (!input.jobId || !input.targetStatus) {

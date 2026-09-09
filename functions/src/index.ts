@@ -11,6 +11,7 @@ import {
   NotFoundError,
   ConflictError,
 } from "./shared/errors";
+import { shouldEnforceAppCheck } from "./security/app_check";
 import { logger } from "./shared/logger";
 import { userService, SetupCapabilitiesInput } from "./users/user_service";
 import { jobService } from "./jobs/job_service";
@@ -45,6 +46,7 @@ export * from "./notifications/token_service";
 export * from "./notifications/notification_service";
 export * from "./payments/razorpay_gateway";
 export * from "./payments/payment_service";
+export * from "./security/app_check";
 
 
 const REGION = "asia-south1";
@@ -83,7 +85,7 @@ export const getBackendStatus = onCall(
  * Authoritative Job Creation Callable
  */
 export const createJob = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<CreateJobInput>) => {
     try {
       return await jobService.createJob(request, request.data);
@@ -97,7 +99,7 @@ export const createJob = onCall(
  * Authoritative Job Lifecycle State Transition Callable
  */
 export const transitionJobStatus = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<TransitionJobStatusInput>) => {
     try {
       await jobService.transitionJobStatus(request, request.data);
@@ -112,7 +114,7 @@ export const transitionJobStatus = onCall(
  * Authoritative Worker Job Application Callable
  */
 export const applyForJob = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<ApplyForJobInput>) => {
     try {
       return await applicationService.applyForJob(request, request.data);
@@ -126,7 +128,7 @@ export const applyForJob = onCall(
  * Authoritative Transactional Application Acceptance Callable
  */
 export const acceptApplication = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<AcceptApplicationInput>) => {
     try {
       return await applicationService.acceptApplication(request, request.data);
@@ -140,7 +142,7 @@ export const acceptApplication = onCall(
  * Authoritative Application Rejection Callable
  */
 export const rejectApplication = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<RejectApplicationInput>) => {
     try {
       await applicationService.rejectApplication(request, request.data);
@@ -155,7 +157,7 @@ export const rejectApplication = onCall(
  * Authoritative Worker Application Withdrawal Callable
  */
 export const withdrawApplication = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<WithdrawApplicationInput>) => {
     try {
       await applicationService.withdrawApplication(request, request.data);
@@ -173,6 +175,8 @@ export const createPaymentOrder = onCall(
   {
     region: REGION,
     cors: true,
+    enforceAppCheck: shouldEnforceAppCheck(),
+    consumeAppCheckToken: shouldEnforceAppCheck(),
     secrets: [RAZORPAY_KEY_SECRET],
   },
   async (request: CallableRequest<CreatePaymentOrderInput>) => {
@@ -237,7 +241,7 @@ export const handlePaymentWebhook = onRequest(
  * Authoritative Device Token Registration Callable
  */
 export const registerDeviceToken = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<RegisterDeviceTokenInput>) => {
     try {
       return await tokenService.registerToken(request, request.data);
@@ -251,7 +255,7 @@ export const registerDeviceToken = onCall(
  * Authoritative Device Token Unregistration Callable
  */
 export const unregisterDeviceToken = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<UnregisterDeviceTokenInput>) => {
     try {
       return await tokenService.unregisterToken(request, request.data);
@@ -289,7 +293,7 @@ export const onChatMessageCreated = onDocumentCreated(
  * Enables new and dual-role users to initialize worker and/or contractor capabilities.
  */
 export const setupAccountCapabilities = onCall(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, enforceAppCheck: shouldEnforceAppCheck() },
   async (request: CallableRequest<SetupCapabilitiesInput>) => {
     try {
       return await userService.setupAccountCapabilities(request, request.data);

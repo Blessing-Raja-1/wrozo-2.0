@@ -7,6 +7,7 @@ import 'package:wrozo/core/localization/l10n/app_localizations.dart';
 import 'package:wrozo/core/notifications/notification_service.dart';
 import 'package:wrozo/core/routing/app_router.dart';
 import 'package:wrozo/core/theme/app_theme.dart';
+import 'package:wrozo/core/security/app_check_service.dart';
 import 'package:wrozo/firebase_options.dart';
 
 void main() async {
@@ -14,6 +15,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await AppCheckService.initialize();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   runApp(
     const ProviderScope(
