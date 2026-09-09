@@ -6,7 +6,8 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
-    "test": "node --test \"lib/**/*.test.js\""
+    "test": "node --test \"lib/!(integration)/**/*.test.js\" \"lib/*.test.js\"",
+    "test:integration": "node --test \"lib/integration/**/*.test.js\""
   },
   "engines": {
     "node": ">=20"

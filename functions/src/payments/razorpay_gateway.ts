@@ -105,6 +105,11 @@ export class MockRazorpayGateway implements IRazorpayGateway {
     this.shouldFail = false;
     this.createdOrders = [];
   }
+
+  /** Alias for reset() — matches MockMessagingGateway.clear() pattern. */
+  clear(): void {
+    this.reset();
+  }
 }
 
 /**

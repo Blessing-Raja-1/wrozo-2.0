@@ -13,7 +13,11 @@ import * as admin from "firebase-admin";
  * be passed into initializeApp() or committed to source control.
  */
 if (admin.apps.length === 0) {
-  admin.initializeApp();
+  const projectId =
+    process.env.GCLOUD_PROJECT ||
+    process.env.FIREBASE_PROJECT ||
+    "wrozo-5b147";
+  admin.initializeApp({ projectId });
 }
 
 export const app = admin.app();
